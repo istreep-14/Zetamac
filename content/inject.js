@@ -1,4 +1,4 @@
-// content/inject.js - Simplified tracking script
+// content/inject.js - Improved tracking with structured problem parsing
 
 let currentProblem = null;
 let problemStartTime = null;
@@ -7,14 +7,105 @@ let gameActive = false;
 let sessionSaved = false;
 let lastScoreCheck = 0;
 let maxTimerSeen = 0;
-let answerForCurrentProblem = "";
+
+// Game settings database
+const GAME_SETTINGS = {
+  '72740d67': { mode: 'Normal', duration: 30 },
+  '0172800b': { mode: 'Normal', duration: 60 },
+  'a7220a92': { mode: 'Normal', duration: 120 },
+  '215bc31a': { mode: 'Normal', duration: 300 },
+  '97382c35': { mode: 'Normal', duration: 600 },
+  'c9750470': { mode: 'Hard', duration: 30 },
+  'ac954fea': { mode: 'Hard', duration: 60 },
+  '5ae295b0': { mode: 'Hard', duration: 120 },
+  '04e52452': { mode: 'Hard', duration: 300 },
+  '7ca8f568': { mode: 'Hard', duration: 600 }
+};
+
+function getGameSettings() {
+  const url = window.location.href;
+  const keyMatch = url.match(/key=([a-f0-9]+)/);
+  
+  if (keyMatch && GAME_SETTINGS[keyMatch[1]]) {
+    return {
+      key: keyMatch[1],
+      ...GAME_SETTINGS[keyMatch[1]]
+    };
+  }
+  
+  return { key: 'unknown', mode: 'Unknown', duration: null };
+}
+
+function parseProblem(problemText) {
+  // Clean the problem text
+  const clean = problemText.replace(/\s+/g, ' ').trim();
+  
+  // Match different operator formats
+  const addMatch = clean.match(/(\d+)\s*\+\s*(\d+)/);
+  const subMatch = clean.match(/(\d+)\s*[-–—]\s*(\d+)/);
+  const mulMatch = clean.match(/(\d+)\s*[×x*]\s*(\d+)/);
+  const divMatch = clean.match(/(\d+)\s*[÷/]\s*(\d+)/);
+  
+  if (addMatch) {
+    const a = parseInt(addMatch[1]);
+    const b = parseInt(addMatch[2]);
+    return {
+      original: clean,
+      a: a,
+      b: b,
+      operator: '+',
+      operationType: 'addition',
+      answer: a + b
+    };
+  } else if (subMatch) {
+    // For subtraction: shown as "result - subtrahend", so c - a = b
+    const c = parseInt(subMatch[1]);
+    const a = parseInt(subMatch[2]);
+    return {
+      original: clean,
+      a: a,  // Store the subtrahend
+      b: c - a,  // Calculate minuend
+      c: c,  // Store result
+      operator: '-',
+      operationType: 'subtraction',
+      answer: c - a
+    };
+  } else if (mulMatch) {
+    const a = parseInt(mulMatch[1]);
+    const b = parseInt(mulMatch[2]);
+    return {
+      original: clean,
+      a: a,
+      b: b,
+      operator: '×',
+      operationType: 'multiplication',
+      answer: a * b
+    };
+  } else if (divMatch) {
+    // For division: shown as "result ÷ divisor", so c ÷ a = b
+    const c = parseInt(divMatch[1]);
+    const a = parseInt(divMatch[2]);
+    return {
+      original: clean,
+      a: a,  // Store the divisor
+      b: Math.floor(c / a),  // Calculate quotient
+      c: c,  // Store result
+      operator: '÷',
+      operationType: 'division',
+      answer: Math.floor(c / a)
+    };
+  }
+  
+  return null;
+}
 
 function getCurrentProblem() {
   const problemElement = document.querySelector('span.problem');
   if (problemElement) {
     const text = problemElement.textContent?.trim();
     if (text) {
-      const mathMatch = text.match(/(\d+\s*[+\-×÷*\/]\s*\d+)\s*=/);
+      // More flexible matching for all operators
+      const mathMatch = text.match(/(\d+\s*[+\-–—×x*÷\/]\s*\d+)/);
       if (mathMatch && mathMatch[1].length < 30) {
         return mathMatch[1].replace(/\s+/g, ' ').trim();
       }
@@ -58,13 +149,10 @@ function getTimeRemaining() {
   for (let element of allElements) {
     const text = element.textContent?.trim();
     if (text && text.length < 100) {
-      const timeMatch = text.match(/Seconds left:\s*(\d+)/i) || 
-                       text.match(/Time:\s*(\d+)/i) ||
-                       text.match(/(\d+)\s*seconds/i);
-      
+      const timeMatch = text.match(/Seconds left:\s*(\d+)/i);
       if (timeMatch) {
         const seconds = parseInt(timeMatch[1]);
-        if (seconds >= 0 && seconds <= 300) {
+        if (seconds >= 0 && seconds <= 600) {
           return seconds;
         }
       }
@@ -73,30 +161,36 @@ function getTimeRemaining() {
   return null;
 }
 
-function getOperationType(problemText) {
-  if (problemText.includes('+')) return 'addition';
-  if (problemText.includes('-')) return 'subtraction';
-  if (problemText.includes('×') || problemText.includes('*')) return 'multiplication';
-  if (problemText.includes('÷') || problemText.includes('/')) return 'division';
-  return 'unknown';
-}
-
-function logProblemData(question, answer, latency) {
-  const problemData = {
-    question,
-    answer,
-    latency,
-    operationType: getOperationType(question)
-  };
-  gameData.push(problemData);
-  console.log(`Problem #${gameData.length}: ${question} → ${answer} (${latency}ms)`);
-}
-
-function getUserAnswer() {
-  const inputField = document.querySelector('input[type="text"]') || 
-                     document.querySelector('input[type="number"]') ||
-                     document.querySelector('input');
-  return inputField ? inputField.value.trim() : "";
+function logProblemData(problemText, latency) {
+  const parsed = parseProblem(problemText);
+  
+  if (parsed) {
+    const problemData = {
+      question: parsed.original,
+      a: parsed.a,
+      b: parsed.b,
+      operator: parsed.operator,
+      operationType: parsed.operationType,
+      answer: parsed.answer,
+      latency: latency
+    };
+    
+    // Include c for subtraction and division
+    if (parsed.c !== undefined) {
+      problemData.c = parsed.c;
+    }
+    
+    gameData.push(problemData);
+    console.log(`Problem #${gameData.length}: ${parsed.original} [${parsed.a} ${parsed.operator} ${parsed.b} = ${parsed.answer}] (${latency}ms)`);
+  } else {
+    // Fallback for unparseable problems
+    gameData.push({
+      question: problemText,
+      operationType: 'unknown',
+      latency: latency
+    });
+    console.log(`Problem #${gameData.length}: ${problemText} (${latency}ms) [parse failed]`);
+  }
 }
 
 function checkGameEnd() {
@@ -112,50 +206,62 @@ function checkGameEnd() {
 
     setTimeout(() => {
       const score = getScoreValue();
+      const settings = getGameSettings();
       
       // Log final problem
       if (currentProblem && problemStartTime) {
         const latency = Date.now() - problemStartTime;
-        const finalAnswer = answerForCurrentProblem || "unknown";
-        logProblemData(currentProblem, finalAnswer, latency);
+        logProblemData(currentProblem, latency);
       }
 
       // Match score with tracked problems
       const deficit = score - gameData.length;
       if (deficit > 0) {
+        console.log(`Adding ${deficit} ultra-fast problems`);
         for (let i = 0; i < deficit; i++) {
           gameData.push({
-            question: `missed-${gameData.length + 1}`,
-            answer: "ultra-fast",
-            latency: 0,
-            operationType: "unknown"
+            question: `ultra-fast-${gameData.length + 1}`,
+            operationType: 'unknown',
+            latency: 0
           });
         }
       } else if (deficit < 0) {
         gameData = gameData.slice(0, score);
       }
 
+      // Calculate normalized metrics
+      const duration = settings.duration || maxTimerSeen || 120;
+      const scorePerSecond = score / duration;
+      const normalized120 = scorePerSecond * 120;
+
       // Save session data
       const sessionData = {
         timestamp: new Date().toISOString(),
         score: score,
+        scorePerSecond: parseFloat(scorePerSecond.toFixed(3)),
+        normalized120: parseFloat(normalized120.toFixed(1)),
+        key: settings.key,
+        mode: settings.mode,
+        duration: duration,
         gameUrl: window.location.href,
         problems: gameData
       };
+
+      console.log(`Session complete: ${score} points (${scorePerSecond.toFixed(2)}/s, normalized: ${normalized120.toFixed(1)})`);
 
       chrome.storage.local.get('gameSessions', (result) => {
         const gameSessions = result.gameSessions || [];
         gameSessions.push(sessionData);
 
         chrome.storage.local.set({ gameSessions }, () => {
-          console.log('Session saved');
+          console.log('Session saved to local storage');
           
           // Send to Google Sheets
           chrome.runtime.sendMessage(
             { action: "sendGameData", data: sessionData },
             (response) => {
               if (response?.success) {
-                console.log("Data sent to sheet");
+                console.log("Data sent to Google Sheets");
               } else {
                 console.error("Error sending data:", response?.error);
               }
@@ -170,12 +276,11 @@ function checkGameEnd() {
       lastScoreCheck = 0;
       currentProblem = null;
       problemStartTime = null;
-      answerForCurrentProblem = "";
       maxTimerSeen = 0;
     }, 1000);
   } else if (timeRemaining > 0 && sessionSaved) {
     // New game started
-    console.log("New game started");
+    console.log(`New game started (${getGameSettings().mode} ${getGameSettings().duration}s)`);
     sessionSaved = false;
     gameActive = true;
     gameData = [];
@@ -187,6 +292,9 @@ function checkGameEnd() {
 function startProblemObserver() {
   console.log("Monitoring started");
   
+  const settings = getGameSettings();
+  console.log(`Game settings: ${settings.mode} mode, ${settings.duration}s duration (key: ${settings.key})`);
+  
   gameActive = true;
   gameData = [];
   sessionSaved = false;
@@ -196,57 +304,50 @@ function startProblemObserver() {
     maxTimerSeen = timeRemaining;
   }
 
-  let lastAnswer = "";
-
+  // More aggressive problem detection for fast answers
+  let lastProblemCheck = "";
+  
   const observer = new MutationObserver(() => {
+    const newProblem = getCurrentProblem();
+    
     // Check for initial problem
-    if (!currentProblem) {
-      const problem = getCurrentProblem();
-      if (problem) {
-        currentProblem = problem;
-        problemStartTime = Date.now();
-        console.log(`Initial problem: ${problem}`);
-      }
+    if (!currentProblem && newProblem) {
+      currentProblem = newProblem;
+      problemStartTime = Date.now();
+      lastProblemCheck = newProblem;
+      console.log(`Initial problem: ${newProblem}`);
     }
 
-    // Detect problem changes
-    const newProblem = getCurrentProblem();
-    if (newProblem && newProblem !== currentProblem && gameActive) {
+    // Detect problem changes (including ultra-fast ones)
+    if (newProblem && newProblem !== currentProblem && newProblem !== lastProblemCheck && gameActive) {
       if (currentProblem && problemStartTime) {
         const latency = Date.now() - problemStartTime;
-        const finalAnswer = answerForCurrentProblem || lastAnswer || "unknown";
-        logProblemData(currentProblem, finalAnswer, latency);
+        logProblemData(currentProblem, latency);
       }
 
       currentProblem = newProblem;
       problemStartTime = Date.now();
-      answerForCurrentProblem = "";
-      lastAnswer = "";
+      lastProblemCheck = newProblem;
     }
 
-    // Check score changes
+    // Check score changes for ultra-fast problems we missed
     const currentScore = getScoreValue();
     if (currentScore > lastScoreCheck && gameActive) {
       const scoreIncrease = currentScore - lastScoreCheck;
-      if (gameData.length < lastScoreCheck + scoreIncrease) {
-        const missed = lastScoreCheck + scoreIncrease - gameData.length;
+      const problemsLoggedSinceLastCheck = gameData.length - lastScoreCheck;
+      
+      if (scoreIncrease > problemsLoggedSinceLastCheck) {
+        const missed = scoreIncrease - problemsLoggedSinceLastCheck;
+        console.log(`Score jumped by ${scoreIncrease}, only logged ${problemsLoggedSinceLastCheck} - adding ${missed} ultra-fast`);
         for (let i = 0; i < missed; i++) {
           gameData.push({
-            question: `missed-${gameData.length + 1}`,
-            answer: "ultra-fast",
-            latency: 0,
-            operationType: "unknown"
+            question: `ultra-fast-${gameData.length + 1}`,
+            operationType: 'unknown',
+            latency: 0
           });
         }
       }
       lastScoreCheck = currentScore;
-    }
-
-    // Capture current answer
-    const currentAnswer = getUserAnswer();
-    if (currentAnswer && currentAnswer !== lastAnswer) {
-      lastAnswer = currentAnswer;
-      answerForCurrentProblem = currentAnswer;
     }
 
     checkGameEnd();
@@ -258,27 +359,24 @@ function startProblemObserver() {
     characterData: true
   });
 
-  // Capture input events
-  document.addEventListener('input', (e) => {
-    if (e.target.tagName === 'INPUT' && e.target.value) {
-      answerForCurrentProblem = e.target.value;
-      lastAnswer = e.target.value;
-    }
-  });
-
-  // Polling for missed answers
+  // High-frequency polling to catch ultra-fast problem changes
   setInterval(() => {
     if (gameActive) {
-      const answer = getUserAnswer();
-      if (answer && answer !== lastAnswer) {
-        lastAnswer = answer;
-        answerForCurrentProblem = answer;
+      const newProblem = getCurrentProblem();
+      if (newProblem && newProblem !== currentProblem && newProblem !== lastProblemCheck) {
+        if (currentProblem && problemStartTime) {
+          const latency = Date.now() - problemStartTime;
+          logProblemData(currentProblem, latency);
+        }
+        currentProblem = newProblem;
+        problemStartTime = Date.now();
+        lastProblemCheck = newProblem;
       }
     }
-  }, 50);
+  }, 25); // Poll every 25ms to catch ultra-fast changes
 }
 
 setTimeout(() => {
-  console.log("Starting monitoring...");
+  console.log("Starting Zetamac monitoring...");
   startProblemObserver();
 }, 1000);
