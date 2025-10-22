@@ -1,6 +1,6 @@
 // background/index.js - Improved version with better data formatting
 
-const googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbx3EdN19zwixtZCo0kRBNCFy2dcLbbxV7Jg3b0MJ-oZTjEdOJPB3EMul0lrutegsJgPbg/exec';
+const googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbyjxIIqmqWcPeFZ5G_m9ZGetPVlsDf28kYFN4__6yRPFZQw4a73EZjNsYNq2GSWooPi/exec';
 
 function formatSessionForSheet(sessionData) {
   // Format timestamp as readable date
