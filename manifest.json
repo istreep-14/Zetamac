@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Smart Zetamac Coach",
-  "version": "1.0",
-  "description": "Track your Zetamac performance",
+  "version": "2.0",
+  "description": "Track your Zetamac performance with detailed analytics",
 
   "permissions": [
     "storage"
@@ -10,8 +10,7 @@
 
   "host_permissions": [
     "https://arithmetic.zetamac.com/*",
-    "https://script.google.com/macros/s/*",
-    "https://script.googleusercontent.com/*"  
+    "https://script.google.com/macros/s/*"
   ],
 
   "background": {
@@ -27,6 +26,14 @@
   ],
 
   "action": {
-    "default_popup": "popup/popup.html"
-  }
+    "default_popup": "popup/popup.html",
+    "default_title": "Smart Zetamac Coach"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["dashboard.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
