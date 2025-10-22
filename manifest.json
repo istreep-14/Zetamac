@@ -32,7 +32,7 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["dashboard.html"],
+      "resources": ["dashboard.html", "dashboard.js"],
       "matches": ["<all_urls>"]
     }
   ]
