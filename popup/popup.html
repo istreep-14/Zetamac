@@ -125,6 +125,7 @@
       padding: 12px;
       margin-bottom: 16px;
       color: white;
+      display: none;
     }
     
     .tip-title {
@@ -146,3 +147,54 @@
     <div class="header">
       <h1>🧮 Zetamac Coach</h1>
       <p>Performance Tracker</p>
+    </div>
+    
+    <div id="loading" class="loading">
+      Loading your stats...
+    </div>
+    
+    <div id="content" style="display: none;">
+      <div id="tip" class="tip">
+        <div class="tip-title">💡 Tip</div>
+        <div id="tip-text" class="tip-text"></div>
+      </div>
+      
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Sessions</div>
+          <div class="stat-value" id="session-count">0</div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-label">Best</div>
+          <div class="stat-value" id="best-score">-</div>
+          <div class="stat-subvalue" id="best-normalized">-</div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-label">Average</div>
+          <div class="stat-value" id="avg-score">-</div>
+          <div class="stat-subvalue" id="avg-normalized">-</div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-label">Recent</div>
+          <div class="stat-value" id="recent-score">-</div>
+          <div class="stat-subvalue" id="recent-normalized">-</div>
+        </div>
+      </div>
+      
+      <div class="button-group">
+        <button id="dashboard-btn" class="btn btn-primary">
+          📊 View Dashboard
+        </button>
+        <button id="practice-btn" class="btn btn-secondary">
+          🎯 Practice Now
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
