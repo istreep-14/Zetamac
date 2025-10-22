@@ -4,273 +4,382 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Zetamac Dashboard</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      padding: 20px;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    .header {
-      text-align: center;
-      color: white;
-      margin-bottom: 30px;
-    }
-
-    .header h1 {
-      font-size: 36px;
-      margin-bottom: 10px;
-    }
-
-    .header p {
-      font-size: 16px;
-      opacity: 0.9;
-    }
-
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 20px;
-      margin-bottom: 30px;
-    }
-
-    .stat-card {
-      background: white;
-      border-radius: 15px;
-      padding: 25px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      text-align: center;
-    }
-
-    .stat-card .label {
-      font-size: 14px;
-      color: #666;
-      margin-bottom: 10px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .stat-card .value {
-      font-size: 36px;
-      font-weight: bold;
-      color: #667eea;
-    }
-
-    .stat-card .subtext {
-      font-size: 12px;
-      color: #999;
-      margin-top: 5px;
-    }
-
-    .chart-container {
-      background: white;
-      border-radius: 15px;
-      padding: 30px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      margin-bottom: 30px;
-    }
-
-    .chart-title {
-      font-size: 20px;
-      font-weight: bold;
-      color: #333;
-      margin-bottom: 20px;
-    }
-
-    .sessions-table {
-      background: white;
-      border-radius: 15px;
-      padding: 30px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      overflow-x: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    th {
-      text-align: left;
-      padding: 12px;
-      background: #f8f9fa;
-      font-weight: 600;
-      color: #333;
-      border-bottom: 2px solid #e0e0e0;
-    }
-
-    td {
-      padding: 12px;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    tr:hover {
-      background: #f8f9fa;
-    }
-
-    .no-data {
-      text-align: center;
-      padding: 40px;
-      color: #999;
-      font-size: 16px;
-    }
-
-    .operation-badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-
-    .addition { background: #e3f2fd; color: #1976d2; }
-    .subtraction { background: #fff3e0; color: #f57c00; }
-    .multiplication { background: #e8f5e9; color: #388e3c; }
-    .division { background: #fce4ec; color: #c2185b; }
-    .unknown { background: #f5f5f5; color: #757575; }
-
-    canvas {
-      max-height: 300px;
-      display: block;
-      margin: 0 auto;
-    }
-
-    .actions {
-      text-align: center;
-      margin-top: 20px;
-    }
-
-    .btn {
-      padding: 12px 24px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      margin: 0 10px;
-      transition: all 0.3s ease;
-    }
-
-    .btn-primary {
-      background: white;
-      color: #667eea;
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(255,255,255,0.3);
-    }
-
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.2);
-      color: white;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-    }
-
-    .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.3);
-    }
-
-    .btn-danger {
-      background: rgba(255, 255, 255, 0.2);
-      color: white;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-    }
-
-    .btn-danger:hover {
-      background: #dc3545;
-    }
-  </style>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/recharts@2.5.0/dist/Recharts.js"></script>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>🧮 Zetamac Performance Dashboard</h1>
-      <p>Track your arithmetic speed and accuracy</p>
-    </div>
+  <div id="root"></div>
+  
+  <script type="module">
+    const { useState, useEffect, useMemo } = React;
+    const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } = Recharts;
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="label">Total Sessions</div>
-        <div class="value" id="total-sessions">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="label">Best Score</div>
-        <div class="value" id="best-score">-</div>
-        <div class="subtext" id="best-date"></div>
-      </div>
-      <div class="stat-card">
-        <div class="label">Average Score</div>
-        <div class="value" id="avg-score">-</div>
-        <div class="subtext">across all sessions</div>
-      </div>
-      <div class="stat-card">
-        <div class="label">Recent Score</div>
-        <div class="value" id="recent-score">-</div>
-        <div class="subtext" id="recent-date"></div>
-      </div>
-      <div class="stat-card">
-        <div class="label">Total Problems</div>
-        <div class="value" id="total-problems">0</div>
-        <div class="subtext">answered</div>
-      </div>
-      <div class="stat-card">
-        <div class="label">Avg Latency</div>
-        <div class="value" id="avg-latency">-</div>
-        <div class="subtext">per problem</div>
-      </div>
-    </div>
+    function ZetamacDashboard() {
+      const [sessions, setSessions] = useState([]);
+      const [filteredSessions, setFilteredSessions] = useState([]);
+      const [filters, setFilters] = useState({ mode: 'all', duration: 'all' });
 
-    <div class="chart-container">
-      <div class="chart-title">Score Progress Over Time</div>
-      <canvas id="score-chart"></canvas>
-    </div>
+      useEffect(() => {
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+          chrome.storage.local.get(['gameSessions'], (result) => {
+            const loadedSessions = result.gameSessions || [];
+            setSessions(loadedSessions);
+            applyFilters(loadedSessions, filters);
+          });
+        }
+      }, []);
 
-    <div class="chart-container">
-      <div class="chart-title">Operation Type Breakdown</div>
-      <canvas id="operations-chart"></canvas>
-    </div>
+      const applyFilters = (sessionsData, currentFilters) => {
+        const filtered = sessionsData.filter(session => {
+          const modeMatch = currentFilters.mode === 'all' || session.mode === currentFilters.mode;
+          const durationMatch = currentFilters.duration === 'all' || session.duration === parseInt(currentFilters.duration);
+          return modeMatch && durationMatch;
+        });
+        setFilteredSessions(filtered);
+      };
 
-    <div class="sessions-table">
-      <div class="chart-title">Recent Sessions</div>
-      <table id="sessions-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Score</th>
-            <th>Problems</th>
-            <th>Avg Time</th>
-            <th>Operations</th>
-          </tr>
-        </thead>
-        <tbody id="sessions-body">
-          <tr>
-            <td colspan="5" class="no-data">Loading sessions...</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      const handleFilterChange = (type, value) => {
+        const newFilters = { ...filters, [type]: value };
+        setFilters(newFilters);
+        applyFilters(sessions, newFilters);
+      };
 
-    <div class="actions">
-      <button class="btn btn-primary" id="refresh-btn">🔄 Refresh</button>
-      <button class="btn btn-secondary" id="dump-data-btn">📤 Dump to Sheet</button>
-      <button class="btn btn-danger" id="clear-btn">🗑️ Clear All Data</button>
-    </div>
-  </div>
+      const stats = useMemo(() => {
+        if (filteredSessions.length === 0) {
+          return {
+            totalSessions: 0,
+            bestScore: 0,
+            bestNormalized: 0,
+            avgScore: 0,
+            avgNormalized: 0,
+            recentScore: 0,
+            recentNormalized: 0
+          };
+        }
 
-  <script src="dashboard.js"></script>
+        const scores = filteredSessions.map(s => s.score);
+        const normalized = filteredSessions.map(s => s.normalized120 || s.score);
+        const recent = filteredSessions[filteredSessions.length - 1];
+        const bestScore = Math.max(...scores);
+        const bestIndex = scores.indexOf(bestScore);
+
+        return {
+          totalSessions: filteredSessions.length,
+          bestScore,
+          bestNormalized: normalized[bestIndex],
+          avgScore: (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1),
+          avgNormalized: (normalized.reduce((a, b) => a + b, 0) / normalized.length).toFixed(1),
+          recentScore: recent.score,
+          recentNormalized: recent.normalized120 || recent.score
+        };
+      }, [filteredSessions]);
+
+      const operationStats = useMemo(() => {
+        const ops = {
+          addition: { times: [], count: 0 },
+          subtraction: { times: [], count: 0 },
+          multiplication: { times: [], count: 0 },
+          division: { times: [], count: 0 }
+        };
+
+        let totalProblems = 0;
+
+        filteredSessions.forEach(session => {
+          if (session.problems) {
+            session.problems.forEach(p => {
+              if (p.operationType && ops[p.operationType] && p.latency > 0) {
+                ops[p.operationType].times.push(p.latency / 1000);
+                ops[p.operationType].count++;
+                totalProblems++;
+              }
+            });
+          }
+        });
+
+        return Object.entries(ops).map(([type, data]) => {
+          const avgTime = data.times.length > 0 
+            ? (data.times.reduce((a, b) => a + b, 0) / data.times.length).toFixed(2)
+            : 0;
+          
+          const sorted = [...data.times].sort((a, b) => a - b);
+          const median = sorted.length > 0 
+            ? sorted[Math.floor(sorted.length / 2)].toFixed(2)
+            : 0;
+          
+          const std = data.times.length > 1
+            ? Math.sqrt(data.times.reduce((sq, n) => sq + Math.pow(n - avgTime, 2), 0) / data.times.length).toFixed(2)
+            : 0;
+
+          return {
+            type,
+            avgTime: parseFloat(avgTime),
+            median: parseFloat(median),
+            std: parseFloat(std),
+            count: data.count,
+            percentage: totalProblems > 0 ? ((data.count / totalProblems) * 100).toFixed(1) : 0
+          };
+        }).filter(op => op.count > 0);
+      }, [filteredSessions]);
+
+      const chartData = filteredSessions.map((session, index) => ({
+        session: index + 1,
+        score: session.score,
+        normalized: session.normalized120 || session.score,
+        date: new Date(session.timestamp).toLocaleDateString(),
+        time: new Date(session.timestamp).toLocaleTimeString()
+      }));
+
+      const opColors = {
+        addition: '#3b82f6',
+        subtraction: '#f97316',
+        multiplication: '#10b981',
+        division: '#ec4899'
+      };
+
+      const opIcons = {
+        addition: '+',
+        subtraction: '−',
+        multiplication: '×',
+        division: '÷'
+      };
+
+      const CustomTooltip = ({ active, payload }) => {
+        if (active && payload && payload.length) {
+          return React.createElement('div', { 
+            className: 'bg-white p-3 rounded-lg shadow-lg border border-gray-200' 
+          },
+            React.createElement('p', { className: 'font-semibold text-gray-800' }, payload[0].payload.date),
+            React.createElement('p', { className: 'text-sm text-gray-600' }, payload[0].payload.time),
+            React.createElement('p', { className: 'text-blue-600 font-bold mt-2' }, 
+              `Raw: ${payload[0].payload.score}`
+            ),
+            React.createElement('p', { className: 'text-purple-600 font-bold' }, 
+              `Standardized: ${payload[0].payload.normalized.toFixed(1)}`
+            )
+          );
+        }
+        return null;
+      };
+
+      return React.createElement('div', { className: 'min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-6' },
+        React.createElement('div', { className: 'max-w-7xl mx-auto' },
+          // Header
+          React.createElement('div', { className: 'text-center mb-8' },
+            React.createElement('h1', { className: 'text-5xl font-bold text-white mb-2' }, '🧮 Zetamac Analytics'),
+            React.createElement('p', { className: 'text-white/90 text-lg' }, 'Track your arithmetic performance')
+          ),
+
+          // Filters
+          React.createElement('div', { className: 'bg-white/95 backdrop-blur rounded-2xl p-4 mb-6 shadow-xl' },
+            React.createElement('div', { className: 'flex gap-6 items-center justify-center flex-wrap' },
+              React.createElement('div', { className: 'flex items-center gap-3' },
+                React.createElement('label', { className: 'font-semibold text-gray-700' }, 'Mode:'),
+                React.createElement('select', {
+                  value: filters.mode,
+                  onChange: (e) => handleFilterChange('mode', e.target.value),
+                  className: 'px-4 py-2 rounded-lg border-2 border-gray-200 focus:border-indigo-500 outline-none'
+                },
+                  React.createElement('option', { value: 'all' }, 'All'),
+                  React.createElement('option', { value: 'Normal' }, 'Normal'),
+                  React.createElement('option', { value: 'Hard' }, 'Hard')
+                )
+              ),
+              React.createElement('div', { className: 'flex items-center gap-3' },
+                React.createElement('label', { className: 'font-semibold text-gray-700' }, 'Duration:'),
+                React.createElement('select', {
+                  value: filters.duration,
+                  onChange: (e) => handleFilterChange('duration', e.target.value),
+                  className: 'px-4 py-2 rounded-lg border-2 border-gray-200 focus:border-indigo-500 outline-none'
+                },
+                  React.createElement('option', { value: 'all' }, 'All'),
+                  React.createElement('option', { value: '30' }, '30s'),
+                  React.createElement('option', { value: '60' }, '60s'),
+                  React.createElement('option', { value: '120' }, '120s'),
+                  React.createElement('option', { value: '300' }, '300s'),
+                  React.createElement('option', { value: '600' }, '600s')
+                )
+              )
+            )
+          ),
+
+          // Stats Cards
+          React.createElement('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-4 mb-8' },
+            React.createElement('div', { className: 'bg-white/95 backdrop-blur rounded-xl p-6 shadow-lg' },
+              React.createElement('div', { className: 'text-sm text-gray-600 mb-2' }, 'Sessions'),
+              React.createElement('div', { className: 'text-4xl font-bold text-indigo-600' }, stats.totalSessions)
+            ),
+            React.createElement('div', { className: 'bg-white/95 backdrop-blur rounded-xl p-6 shadow-lg' },
+              React.createElement('div', { className: 'text-sm text-gray-600 mb-2' }, 'Best'),
+              React.createElement('div', { className: 'text-3xl font-bold text-indigo-600' }, stats.bestScore),
+              React.createElement('div', { className: 'text-lg text-purple-600 font-semibold' }, `(${stats.bestNormalized.toFixed(1)})`)
+            ),
+            React.createElement('div', { className: 'bg-white/95 backdrop-blur rounded-xl p-6 shadow-lg' },
+              React.createElement('div', { className: 'text-sm text-gray-600 mb-2' }, 'Average'),
+              React.createElement('div', { className: 'text-3xl font-bold text-indigo-600' }, stats.avgScore),
+              React.createElement('div', { className: 'text-lg text-purple-600 font-semibold' }, `(${stats.avgNormalized})`)
+            ),
+            React.createElement('div', { className: 'bg-white/95 backdrop-blur rounded-xl p-6 shadow-lg' },
+              React.createElement('div', { className: 'text-sm text-gray-600 mb-2' }, 'Recent'),
+              React.createElement('div', { className: 'text-3xl font-bold text-indigo-600' }, stats.recentScore),
+              React.createElement('div', { className: 'text-lg text-purple-600 font-semibold' }, `(${stats.recentNormalized.toFixed(1)})`)
+            )
+          ),
+
+          // Score Chart
+          React.createElement('div', { className: 'bg-white/95 backdrop-blur rounded-2xl p-6 mb-8 shadow-xl' },
+            React.createElement('h2', { className: 'text-2xl font-bold text-gray-800 mb-6' }, 'Performance Trend'),
+            chartData.length > 0 ? 
+              React.createElement(ResponsiveContainer, { width: '100%', height: 300 },
+                React.createElement(LineChart, { data: chartData },
+                  React.createElement('defs', {},
+                    React.createElement('linearGradient', { id: 'colorGradient', x1: '0', y1: '0', x2: '0', y2: '1' },
+                      React.createElement('stop', { offset: '5%', stopColor: '#8b5cf6', stopOpacity: 0.8 }),
+                      React.createElement('stop', { offset: '95%', stopColor: '#8b5cf6', stopOpacity: 0.1 })
+                    )
+                  ),
+                  React.createElement(XAxis, { dataKey: 'session', stroke: '#6b7280' }),
+                  React.createElement(YAxis, { stroke: '#6b7280' }),
+                  React.createElement(Tooltip, { content: React.createElement(CustomTooltip) }),
+                  React.createElement(Line, {
+                    type: 'monotone',
+                    dataKey: 'normalized',
+                    stroke: '#8b5cf6',
+                    strokeWidth: 3,
+                    dot: { fill: '#8b5cf6', r: 5 },
+                    activeDot: { r: 7 },
+                    fill: 'url(#colorGradient)'
+                  })
+                )
+              ) : 
+              React.createElement('div', { className: 'h-64 flex items-center justify-center text-gray-400' },
+                'No data available'
+              ),
+            React.createElement('div', { className: 'text-center mt-4 text-sm text-gray-600' },
+              React.createElement('span', { className: 'font-semibold' }, 'Note:'),
+              ' Chart shows standardized scores (normalized to 120s)'
+            )
+          ),
+
+          // Operation Stats
+          React.createElement('div', { className: 'bg-white/95 backdrop-blur rounded-2xl p-6 mb-8 shadow-xl' },
+            React.createElement('h2', { className: 'text-2xl font-bold text-gray-800 mb-6' }, 'Operation Performance'),
+            React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-6' },
+              operationStats.map(op =>
+                React.createElement('div', { 
+                  key: op.type, 
+                  className: 'border-2 border-gray-100 rounded-xl p-5 hover:border-indigo-300 transition-all' 
+                },
+                  React.createElement('div', { className: 'flex items-center justify-between mb-4' },
+                    React.createElement('div', { className: 'flex items-center gap-3' },
+                      React.createElement('div', {
+                        className: 'w-12 h-12 rounded-lg flex items-center justify-center text-2xl font-bold text-white',
+                        style: { backgroundColor: opColors[op.type] }
+                      }, opIcons[op.type]),
+                      React.createElement('div', {},
+                        React.createElement('div', { className: 'font-semibold text-gray-800 capitalize' }, op.type),
+                        React.createElement('div', { className: 'text-sm text-gray-500' }, 
+                          `${op.count} problems (${op.percentage}%)`
+                        )
+                      )
+                    ),
+                    React.createElement('div', { className: 'text-right' },
+                      React.createElement('div', { 
+                        className: 'text-3xl font-bold',
+                        style: { color: opColors[op.type] }
+                      }, `${op.avgTime}s`),
+                      React.createElement('div', { className: 'text-xs text-gray-500' }, 'avg time')
+                    )
+                  ),
+                  React.createElement('div', { className: 'w-full bg-gray-200 rounded-full h-3 mb-3' },
+                    React.createElement('div', {
+                      className: 'h-3 rounded-full transition-all',
+                      style: {
+                        width: `${op.percentage}%`,
+                        backgroundColor: opColors[op.type]
+                      }
+                    })
+                  ),
+                  React.createElement('div', { className: 'flex justify-between text-sm' },
+                    React.createElement('div', {},
+                      React.createElement('span', { className: 'text-gray-500' }, 'Median:'),
+                      React.createElement('span', { className: 'font-semibold ml-1' }, `${op.median}s`)
+                    ),
+                    React.createElement('div', {},
+                      React.createElement('span', { className: 'text-gray-500' }, 'Std Dev:'),
+                      React.createElement('span', { className: 'font-semibold ml-1' }, `±${op.std}s`)
+                    )
+                  )
+                )
+              )
+            )
+          ),
+
+          // Recent Sessions
+          React.createElement('div', { className: 'bg-white/95 backdrop-blur rounded-2xl p-6 shadow-xl' },
+            React.createElement('h2', { className: 'text-2xl font-bold text-gray-800 mb-6' }, 'Recent Sessions'),
+            React.createElement('div', { className: 'overflow-x-auto' },
+              React.createElement('table', { className: 'w-full' },
+                React.createElement('thead', {},
+                  React.createElement('tr', { className: 'border-b-2 border-gray-200' },
+                    React.createElement('th', { className: 'text-left py-3 px-4 font-semibold text-gray-700' }, 'Date'),
+                    React.createElement('th', { className: 'text-left py-3 px-4 font-semibold text-gray-700' }, 'Raw'),
+                    React.createElement('th', { className: 'text-left py-3 px-4 font-semibold text-gray-700' }, 'Standardized'),
+                    React.createElement('th', { className: 'text-left py-3 px-4 font-semibold text-gray-700' }, 'Operations')
+                  )
+                ),
+                React.createElement('tbody', {},
+                  filteredSessions.slice(-10).reverse().map((session, idx) => {
+                    const ops = { addition: 0, subtraction: 0, multiplication: 0, division: 0 };
+                    if (session.problems) {
+                      session.problems.forEach(p => {
+                        if (p.operationType && ops.hasOwnProperty(p.operationType)) {
+                          ops[p.operationType]++;
+                        }
+                      });
+                    }
+                    
+                    return React.createElement('tr', { 
+                      key: idx, 
+                      className: 'border-b border-gray-100 hover:bg-indigo-50 transition-colors' 
+                    },
+                      React.createElement('td', { className: 'py-3 px-4' },
+                        new Date(session.timestamp).toLocaleString()
+                      ),
+                      React.createElement('td', { className: 'py-3 px-4' },
+                        React.createElement('span', { className: 'text-xl font-bold text-indigo-600' }, 
+                          session.score
+                        )
+                      ),
+                      React.createElement('td', { className: 'py-3 px-4' },
+                        React.createElement('span', { className: 'text-xl font-bold text-purple-600' },
+                          (session.normalized120 || session.score).toFixed(1)
+                        )
+                      ),
+                      React.createElement('td', { className: 'py-3 px-4' },
+                        React.createElement('div', { className: 'flex gap-2' },
+                          Object.entries(ops).map(([type, count]) =>
+                            count > 0 ? React.createElement('span', {
+                              key: type,
+                              className: 'px-2 py-1 rounded text-xs font-semibold text-white',
+                              style: { backgroundColor: opColors[type] }
+                            }, `${opIcons[type]} ${count}`) : null
+                          )
+                        )
+                      )
+                    );
+                  })
+                )
+              )
+            )
+          )
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(ZetamacDashboard));
+  </script>
 </body>
 </html>
