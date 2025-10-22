@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Smart Zetamac Coach",
-  "version": "2.0",
-  "description": "Track your Zetamac performance with detailed analytics",
+  "version": "2.1",
+  "description": "Track your Zetamac performance with detailed analytics and normalized scoring",
 
   "permissions": [
     "storage"
@@ -32,7 +32,10 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["dashboard.html", "dashboard.js"],
+      "resources": [
+        "dashboard/dashboard.html",
+        "dashboard/dashboard.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ]
