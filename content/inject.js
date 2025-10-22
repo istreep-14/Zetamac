@@ -285,18 +285,27 @@ function startProblemObserver() {
     maxTimerSeen = timeRemaining;
   }
 
+  // Wait for initial problem to appear
+  let initializationAttempts = 0;
+  const waitForFirstProblem = setInterval(() => {
+    const firstProblem = getCurrentProblem();
+    if (firstProblem) {
+      currentProblem = firstProblem;
+      problemStartTime = Date.now();
+      console.log(`First problem detected: ${firstProblem}`);
+      clearInterval(waitForFirstProblem);
+    }
+    initializationAttempts++;
+    if (initializationAttempts > 20) clearInterval(waitForFirstProblem);
+  }, 50);
+
   let lastProblemCheck = "";
+  let lastKnownScore = 0;
   
   const observer = new MutationObserver(() => {
     const newProblem = getCurrentProblem();
     
-    if (!currentProblem && newProblem) {
-      currentProblem = newProblem;
-      problemStartTime = Date.now();
-      lastProblemCheck = newProblem;
-      console.log(`Initial problem: ${newProblem}`);
-    }
-
+    // Track problem changes
     if (newProblem && newProblem !== currentProblem && newProblem !== lastProblemCheck && gameActive) {
       if (currentProblem && problemStartTime) {
         const latency = Date.now() - problemStartTime;
@@ -308,26 +317,27 @@ function startProblemObserver() {
       lastProblemCheck = newProblem;
     }
 
+    // Check score to catch missed problems
     const currentScore = getScoreValue();
-    if (currentScore > lastScoreCheck && gameActive) {
-      const scoreIncrease = currentScore - lastScoreCheck;
-      const problemsLoggedSinceLastCheck = gameData.length - lastScoreCheck;
-      
-      if (scoreIncrease > problemsLoggedSinceLastCheck) {
-        const missed = scoreIncrease - problemsLoggedSinceLastCheck;
-        console.log(`Score jumped - adding ${missed} ultra-fast`);
-        for (let i = 0; i < missed; i++) {
-          gameData.push({
-            question: `ultra-fast-${gameData.length + 1}`,
-            a: '',
-            b: '',
-            c: '',
-            operationType: 'unknown',
-            latency: 0
-          });
+    if (currentScore > lastKnownScore && gameActive) {
+      const deficit = currentScore - gameData.length;
+      if (deficit > 0) {
+        console.log(`Score is ${currentScore}, logged ${gameData.length} - deficit: ${deficit}`);
+        // Only add ultra-fast if we're significantly behind
+        if (deficit > 1) {
+          for (let i = 0; i < deficit - 1; i++) {
+            gameData.push({
+              question: `ultra-fast-${gameData.length + 1}`,
+              a: '',
+              b: '',
+              c: '',
+              operationType: 'unknown',
+              latency: 0
+            });
+          }
         }
       }
-      lastScoreCheck = currentScore;
+      lastKnownScore = currentScore;
     }
 
     checkGameEnd();
@@ -339,6 +349,7 @@ function startProblemObserver() {
     characterData: true
   });
 
+  // More aggressive polling for fast solvers
   setInterval(() => {
     if (gameActive) {
       const newProblem = getCurrentProblem();
