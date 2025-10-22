@@ -1,4 +1,4 @@
-// dashboard/dashboard.js - Enhanced dashboard with filtering
+// dashboard/dashboard.js - Fixed version
 
 let gameSessions = [];
 let filteredSessions = [];
@@ -7,6 +7,7 @@ let currentFilter = { mode: 'all', duration: 'all' };
 function loadData() {
   chrome.storage.local.get(['gameSessions'], (result) => {
     gameSessions = result.gameSessions || [];
+    console.log('Loaded sessions:', gameSessions);
     applyFilters();
   });
 }
@@ -18,15 +19,15 @@ function applyFilters() {
     return modeMatch && durationMatch;
   });
   
+  console.log('Filtered sessions:', filteredSessions);
   updateDashboard();
 }
 
 function updateDashboard() {
   if (filteredSessions.length === 0) {
     document.getElementById('sessions-body').innerHTML = 
-      '<tr><td colspan="5" class="no-data">No sessions match your filters. Try practicing on Zetamac!</td></tr>';
+      '<tr><td colspan="5" class="no-data">No sessions found. Start practicing on Zetamac!</td></tr>';
     
-    // Reset stat cards
     document.getElementById('total-sessions').textContent = '0';
     document.getElementById('best-score').textContent = '-';
     document.getElementById('best-date').textContent = '';
@@ -39,7 +40,6 @@ function updateDashboard() {
     return;
   }
 
-  // Calculate statistics
   const scores = filteredSessions.map(s => s.score);
   const normalized = filteredSessions.map(s => s.normalized120 || s.score);
   const totalSessions = filteredSessions.length;
@@ -49,7 +49,6 @@ function updateDashboard() {
   const avgNormalized = (normalized.reduce((a, b) => a + b, 0) / normalized.length).toFixed(1);
   const recentSession = filteredSessions[filteredSessions.length - 1];
   
-  // Calculate total problems and average latency
   let totalProblems = 0;
   let totalLatency = 0;
   let latencyCount = 0;
@@ -68,11 +67,9 @@ function updateDashboard() {
 
   const avgLatency = latencyCount > 0 ? (totalLatency / latencyCount / 1000).toFixed(2) : 0;
 
-  // Find best score date
   const bestSessionIndex = scores.indexOf(bestScore);
   const bestSession = filteredSessions[bestSessionIndex];
 
-  // Update stat cards
   document.getElementById('total-sessions').textContent = totalSessions;
   document.getElementById('best-score').textContent = `${bestScore} (${bestNormalized})`;
   document.getElementById('best-date').textContent = formatDate(bestSession.timestamp);
@@ -82,11 +79,8 @@ function updateDashboard() {
   document.getElementById('total-problems').textContent = totalProblems;
   document.getElementById('avg-latency').textContent = avgLatency + 's';
 
-  // Create charts
   createScoreChart();
   createOperationsChart();
-  
-  // Populate table
   populateSessionsTable();
 }
 
@@ -107,13 +101,23 @@ function formatDate(timestamp) {
 
 function createScoreChart() {
   const canvas = document.getElementById('score-chart');
+  if (!canvas) return;
+  
   const ctx = canvas.getContext('2d');
   
-  canvas.width = canvas.offsetWidth;
+  const parent = canvas.parentElement;
+  canvas.width = parent.offsetWidth - 60;
   canvas.height = 300;
   
-  const labels = filteredSessions.map((_, i) => i + 1);
-  const rawData = filteredSessions.map(s => s.score);
+  if (filteredSessions.length === 0) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#999';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+  
   const normalizedData = filteredSessions.map(s => s.normalized120 || s.score);
   
   const maxScore = Math.max(...normalizedData, 50);
@@ -140,7 +144,7 @@ function createScoreChart() {
     ctx.fillText(value, padding - 10, y + 4);
   }
   
-  // Draw normalized score line
+  // Draw line
   if (normalizedData.length > 0) {
     ctx.strokeStyle = '#667eea';
     ctx.lineWidth = 3;
@@ -192,9 +196,12 @@ function createScoreChart() {
 
 function createOperationsChart() {
   const canvas = document.getElementById('operations-chart');
+  if (!canvas) return;
+  
   const ctx = canvas.getContext('2d');
   
-  canvas.width = canvas.offsetWidth;
+  const parent = canvas.parentElement;
+  canvas.width = parent.offsetWidth - 60;
   canvas.height = 300;
   
   const operationCounts = {
@@ -274,6 +281,8 @@ function createOperationsChart() {
 
 function populateSessionsTable() {
   const tbody = document.getElementById('sessions-body');
+  if (!tbody) return;
+  
   tbody.innerHTML = '';
 
   const recentSessions = filteredSessions.slice(-10).reverse();
@@ -330,56 +339,94 @@ function clearAllData() {
 }
 
 // Event listeners
-document.getElementById('refresh-btn').addEventListener('click', () => {
-  window.location.reload();
+document.addEventListener('DOMContentLoaded', () => {
+  const refreshBtn = document.getElementById('refresh-btn');
+  const clearBtn = document.getElementById('clear-btn');
+  const dumpBtn = document.getElementById('dump-data-btn');
+  
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      window.location.reload();
+    });
+  }
+  
+  if (clearBtn) {
+    clearBtn.addEventListener('click', clearAllData);
+  }
+  
+  if (dumpBtn) {
+    dumpBtn.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ action: "dumpAllData" }, (response) => {
+        if (response?.success) {
+          alert(`Successfully sent ${response.sent} of ${response.total} sessions to Google Sheets`);
+        } else {
+          alert('Error dumping data: ' + (response?.error || 'Unknown error'));
+        }
+      });
+    });
+  }
+
+  // Add filter controls
+  const filterContainer = document.createElement('div');
+  filterContainer.className = 'filter-container';
+  filterContainer.style.cssText = 'background: white; border-radius: 15px; padding: 20px; margin-bottom: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);';
+  filterContainer.innerHTML = `
+    <div style="display: flex; gap: 20px; align-items: center;">
+      <div>
+        <label style="font-weight: 600; margin-right: 10px;">Mode:</label>
+        <select id="mode-filter" style="padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+          <option value="all">All</option>
+          <option value="Normal">Normal</option>
+          <option value="Hard">Hard</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-weight: 600; margin-right: 10px;">Duration:</label>
+        <select id="duration-filter" style="padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+          <option value="all">All</option>
+          <option value="30">30s</option>
+          <option value="60">60s</option>
+          <option value="120">120s (2 min)</option>
+          <option value="300">300s (5 min)</option>
+          <option value="600">600s (10 min)</option>
+        </select>
+      </div>
+      <div style="margin-left: auto; color: #666; font-size: 14px;">
+        <strong>Note:</strong> Scores shown as Raw (Normalized to 120s)
+      </div>
+    </div>
+  `;
+
+  const container = document.querySelector('.container');
+  const statsGrid = document.querySelector('.stats-grid');
+  if (container && statsGrid) {
+    container.insertBefore(filterContainer, statsGrid);
+  }
+
+  const modeFilter = document.getElementById('mode-filter');
+  const durationFilter = document.getElementById('duration-filter');
+  
+  if (modeFilter) {
+    modeFilter.addEventListener('change', (e) => {
+      currentFilter.mode = e.target.value;
+      applyFilters();
+    });
+  }
+  
+  if (durationFilter) {
+    durationFilter.addEventListener('change', (e) => {
+      currentFilter.duration = e.target.value;
+      applyFilters();
+    });
+  }
+
+  // Load data
+  loadData();
 });
 
-document.getElementById('clear-btn').addEventListener('click', clearAllData);
-
-// Add filter controls
-const filterContainer = document.createElement('div');
-filterContainer.className = 'filter-container';
-filterContainer.style.cssText = 'background: white; border-radius: 15px; padding: 20px; margin-bottom: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);';
-filterContainer.innerHTML = `
-  <div style="display: flex; gap: 20px; align-items: center;">
-    <div>
-      <label style="font-weight: 600; margin-right: 10px;">Mode:</label>
-      <select id="mode-filter" style="padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-        <option value="all">All</option>
-        <option value="Normal">Normal</option>
-        <option value="Hard">Hard</option>
-      </select>
-    </div>
-    <div>
-      <label style="font-weight: 600; margin-right: 10px;">Duration:</label>
-      <select id="duration-filter" style="padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-        <option value="all">All</option>
-        <option value="30">30s</option>
-        <option value="60">60s</option>
-        <option value="120">120s (2 min)</option>
-        <option value="300">300s (5 min)</option>
-        <option value="600">600s (10 min)</option>
-      </select>
-    </div>
-    <div style="margin-left: auto; color: #666; font-size: 14px;">
-      <strong>Note:</strong> Scores shown as Raw (Normalized to 120s)
-    </div>
-  </div>
-`;
-
-const container = document.querySelector('.container');
-const statsGrid = document.querySelector('.stats-grid');
-container.insertBefore(filterContainer, statsGrid);
-
-document.getElementById('mode-filter').addEventListener('change', (e) => {
-  currentFilter.mode = e.target.value;
-  applyFilters();
-});
-
-document.getElementById('duration-filter').addEventListener('change', (e) => {
-  currentFilter.duration = e.target.value;
-  applyFilters();
-});
-
-// Load data when page loads
-loadData();
+// Also trigger load on page load if DOMContentLoaded already fired
+if (document.readyState === 'loading') {
+  // Already set up listener above
+} else {
+  loadData();
+}
