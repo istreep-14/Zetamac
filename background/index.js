@@ -1,22 +1,13 @@
-// background/index.js - Improved version with better data formatting
+// background/index.js - Updated with proper timestamp formatting
 
 const googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbyjxIIqmqWcPeFZ5G_m9ZGetPVlsDf28kYFN4__6yRPFZQw4a73EZjNsYNq2GSWooPi/exec';
 
 function formatSessionForSheet(sessionData) {
-  // Format timestamp as readable date
+  // Format timestamp in ISO format for proper parsing by Apps Script
   const date = new Date(sessionData.timestamp);
-  const formattedDate = date.toLocaleString('en-US', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  });
-
+  
   return {
-    timestamp: formattedDate,
+    timestamp: date.toISOString(),
     score: sessionData.score,
     scorePerSecond: sessionData.scorePerSecond,
     normalized120: sessionData.normalized120,
@@ -40,7 +31,7 @@ async function sendGameDataToGoogleSheet(sessionData) {
     
     const response = await fetch(googleAppsScriptUrl, {
       method: 'POST',
-      mode: 'no-cors', // Google Apps Script requires this
+      mode: 'no-cors',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formattedData)
     });
@@ -53,14 +44,13 @@ async function sendGameDataToGoogleSheet(sessionData) {
   }
 }
 
-// Listen for messages
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "sendGameData") {
     console.log("Received game data:", request.data);
     sendGameDataToGoogleSheet(request.data)
       .then(result => sendResponse(result))
       .catch(error => sendResponse({ success: false, error: error.message }));
-    return true; // Keep channel open for async response
+    return true;
   }
   
   if (request.action === "dumpAllData") {
@@ -72,7 +62,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       for (const session of sessions) {
         const result = await sendGameDataToGoogleSheet(session);
         if (result.success) successCount++;
-        // Add small delay between requests
         await new Promise(resolve => setTimeout(resolve, 500));
       }
       
