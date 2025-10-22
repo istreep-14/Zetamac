@@ -1,6 +1,31 @@
-// background/index.js - Simplified version
+// background/index.js - Improved version with better data formatting
 
 const googleAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbx3EdN19zwixtZCo0kRBNCFy2dcLbbxV7Jg3b0MJ-oZTjEdOJPB3EMul0lrutegsJgPbg/exec';
+
+function formatSessionForSheet(sessionData) {
+  // Format timestamp as readable date
+  const date = new Date(sessionData.timestamp);
+  const formattedDate = date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  return {
+    timestamp: formattedDate,
+    score: sessionData.score,
+    scorePerSecond: sessionData.scorePerSecond,
+    normalized120: sessionData.normalized120,
+    key: sessionData.key,
+    mode: sessionData.mode,
+    duration: sessionData.duration,
+    problems: sessionData.problems
+  };
+}
 
 async function sendGameDataToGoogleSheet(sessionData) {
   console.log('Sending game data to Google Sheet...');
@@ -11,19 +36,17 @@ async function sendGameDataToGoogleSheet(sessionData) {
   }
 
   try {
+    const formattedData = formatSessionForSheet(sessionData);
+    
     const response = await fetch(googleAppsScriptUrl, {
       method: 'POST',
-      body: JSON.stringify(sessionData),
-      headers: { 'Content-Type': 'application/json' }
+      mode: 'no-cors', // Google Apps Script requires this
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formattedData)
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.text();
-    console.log('Data sent successfully:', result);
-    return { success: true, result };
+    console.log('Data sent successfully');
+    return { success: true };
   } catch (error) {
     console.error('Error sending data:', error);
     return { success: false, error: error.message };
@@ -33,7 +56,7 @@ async function sendGameDataToGoogleSheet(sessionData) {
 // Listen for messages
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "sendGameData") {
-    console.log("Received game data");
+    console.log("Received game data:", request.data);
     sendGameDataToGoogleSheet(request.data)
       .then(result => sendResponse(result))
       .catch(error => sendResponse({ success: false, error: error.message }));
@@ -44,10 +67,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log("Dumping all data to sheet");
     chrome.storage.local.get(['gameSessions'], async (result) => {
       const sessions = result.gameSessions || [];
+      let successCount = 0;
+      
       for (const session of sessions) {
-        await sendGameDataToGoogleSheet(session);
+        const result = await sendGameDataToGoogleSheet(session);
+        if (result.success) successCount++;
+        // Add small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
-      sendResponse({ success: true, count: sessions.length });
+      
+      sendResponse({ success: true, total: sessions.length, sent: successCount });
     });
     return true;
   }
