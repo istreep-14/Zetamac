@@ -1,5 +1,7 @@
+// popup/popup.js - Fixed version
+
 document.addEventListener('DOMContentLoaded', () => {
-  console.log("popup.js is running!");
+  console.log("Popup loaded");
 
   const loadingElement = document.getElementById('loading');
   const contentElement = document.getElementById('content');
@@ -12,9 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const zetamacBtn = document.getElementById('zetamac-btn');
   const dumpDataBtn = document.getElementById('dump-data-btn');
 
-  // Function to update the UI with stats and recommendations
   const updateUI = (sessions) => {
-    console.log("Updating UI with sessions:", sessions); // Added log
+    console.log("Updating UI with sessions:", sessions);
     loadingElement.style.display = 'none';
     contentElement.style.display = 'block';
 
@@ -35,7 +36,6 @@ document.addEventListener('DOMContentLoaded', () => {
     sessionCountElement.textContent = sessionCount;
     bestScoreElement.textContent = bestScore;
 
-    // Simple recommendation logic
     if (recentScore < 10) {
       recommendationTextElement.textContent = "Keep practicing! Focus on getting quicker with basic operations.";
       recommendationElement.style.display = 'block';
@@ -46,35 +46,46 @@ document.addEventListener('DOMContentLoaded', () => {
       recommendationTextElement.textContent = "Great job! Challenge yourself with more complex operations or higher speed settings.";
       recommendationElement.style.display = 'block';
     } else {
-        recommendationElement.style.display = 'none';
+      recommendationElement.style.display = 'none';
     }
-
   };
 
-  // Read game session data from local storage
-  console.log("Attempting to retrieve game sessions from local storage."); // Added log
+  console.log("Loading sessions from storage");
   chrome.storage.local.get(['gameSessions'], (result) => {
-    console.log("Retrieved data from local storage:", result); // Added log
+    console.log("Retrieved data:", result);
     const gameSessions = result.gameSessions || [];
     updateUI(gameSessions);
   });
 
-  // Add event listeners to buttons
-  dashboardBtn.addEventListener('click', () => {
-    // Placeholder for opening the dashboard page
-    console.log("Open Dashboard button clicked");
-    chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
-  });
+  if (dashboardBtn) {
+    dashboardBtn.addEventListener('click', () => {
+      console.log("Opening dashboard");
+      chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
+    });
+  }
 
-  zetamacBtn.addEventListener('click', () => {
-    chrome.tabs.create({ url: 'https://zetamac.com/' });
-  });
+  if (zetamacBtn) {
+    zetamacBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: 'https://arithmetic.zetamac.com/' });
+    });
+  }
 
-  dumpDataBtn.addEventListener('click', () => {
-    // Placeholder for triggering the data dump to Google Sheet
-    console.log("Dump Data button clicked");
-    // You would typically send a message to the background script here
-    // chrome.runtime.sendMessage({ action: "dumpData" });
-  });
-
+  if (dumpDataBtn) {
+    dumpDataBtn.addEventListener('click', () => {
+      console.log("Dumping data to sheet");
+      dumpDataBtn.disabled = true;
+      dumpDataBtn.textContent = 'Sending...';
+      
+      chrome.runtime.sendMessage({ action: "dumpAllData" }, (response) => {
+        dumpDataBtn.disabled = false;
+        dumpDataBtn.textContent = 'Dump Data to Sheet';
+        
+        if (response?.success) {
+          alert(`Successfully sent ${response.sent} of ${response.total} sessions to Google Sheets!`);
+        } else {
+          alert('Error: ' + (response?.error || 'Unknown error'));
+        }
+      });
+    });
+  }
 });
