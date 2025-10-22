@@ -233,25 +233,17 @@ function checkGameEnd() {
 
       console.log(`Session complete: ${score} points (${scorePerSecond.toFixed(2)}/s, normalized: ${normalized120.toFixed(1)})`);
 
-      chrome.storage.local.get('gameSessions', (result) => {
-        const gameSessions = result.gameSessions || [];
-        gameSessions.push(sessionData);
-
-        chrome.storage.local.set({ gameSessions }, () => {
-          console.log('Session saved to local storage');
-          
-          chrome.runtime.sendMessage(
-            { action: "sendGameData", data: sessionData },
-            (response) => {
-              if (response?.success) {
-                console.log("Data sent to Google Sheets");
-              } else {
-                console.error("Error sending data:", response?.error);
-              }
-            }
-          );
-        });
-      });
+      // Send to background script which handles both storage and sheets
+      chrome.runtime.sendMessage(
+        { action: "sendGameData", data: sessionData },
+        (response) => {
+          if (response?.success) {
+            console.log("Data sent to Google Sheets successfully");
+          } else {
+            console.error("Error sending data:", response?.error);
+          }
+        }
+      );
 
       gameActive = false;
       gameData = [];
