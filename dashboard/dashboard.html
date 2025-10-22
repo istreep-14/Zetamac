@@ -3,22 +3,502 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Zetamac Coach - Dashboard</title>
+  <title>Zetamac Dashboard</title>
   <style>
-    body {
+    * {
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background-color: #f5f5f5;
+      box-sizing: border-box;
     }
-    #dashboard-root {
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+    }
+
+    .header h1 {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      border-radius: 15px;
+      padding: 25px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      text-align: center;
+    }
+
+    .stat-card .label {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .stat-card .value {
+      font-size: 36px;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    .stat-card .subtext {
+      font-size: 12px;
+      color: #999;
+      margin-top: 5px;
+    }
+
+    .chart-container {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      margin-bottom: 30px;
+    }
+
+    .chart-title {
+      font-size: 20px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 20px;
+    }
+
+    .sessions-table {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      overflow-x: auto;
+    }
+
+    table {
       width: 100%;
-      height: 100vh;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      background: #f8f9fa;
+      font-weight: 600;
+      color: #333;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    tr:hover {
+      background: #f8f9fa;
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+      font-size: 16px;
+    }
+
+    .operation-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .addition { background: #e3f2fd; color: #1976d2; }
+    .subtraction { background: #fff3e0; color: #f57c00; }
+    .multiplication { background: #e8f5e9; color: #388e3c; }
+    .division { background: #fce4ec; color: #c2185b; }
+    .unknown { background: #f5f5f5; color: #757575; }
+
+    canvas {
+      max-height: 300px;
+    }
+
+    .actions {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 0 10px;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary {
+      background: white;
+      color: #667eea;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(255,255,255,0.3);
+    }
+
+    .btn-danger {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .btn-danger:hover {
+      background: #dc3545;
     }
   </style>
 </head>
 <body>
-  <div id="dashboard-root"></div>
-  <script type="module" src="../assets/dashboard.js"></script>
+  <div class="container">
+    <div class="header">
+      <h1>🧮 Zetamac Performance Dashboard</h1>
+      <p>Track your arithmetic speed and accuracy</p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="label">Total Sessions</div>
+        <div class="value" id="total-sessions">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Best Score</div>
+        <div class="value" id="best-score">-</div>
+        <div class="subtext" id="best-date"></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Average Score</div>
+        <div class="value" id="avg-score">-</div>
+        <div class="subtext">across all sessions</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Recent Score</div>
+        <div class="value" id="recent-score">-</div>
+        <div class="subtext" id="recent-date"></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Problems</div>
+        <div class="value" id="total-problems">0</div>
+        <div class="subtext">answered</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Avg Latency</div>
+        <div class="value" id="avg-latency">-</div>
+        <div class="subtext">per problem</div>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">Score Progress Over Time</div>
+      <canvas id="score-chart"></canvas>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">Operation Type Breakdown</div>
+      <canvas id="operations-chart"></canvas>
+    </div>
+
+    <div class="sessions-table">
+      <div class="chart-title">Recent Sessions</div>
+      <table id="sessions-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Score</th>
+            <th>Problems</th>
+            <th>Avg Time</th>
+            <th>Operations</th>
+          </tr>
+        </thead>
+        <tbody id="sessions-body">
+          <tr>
+            <td colspan="5" class="no-data">Loading sessions...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" onclick="window.location.reload()">🔄 Refresh</button>
+      <button class="btn btn-danger" onclick="clearAllData()">🗑️ Clear All Data</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    let gameSessions = [];
+
+    function loadData() {
+      chrome.storage.local.get(['gameSessions'], (result) => {
+        gameSessions = result.gameSessions || [];
+        updateDashboard();
+      });
+    }
+
+    function updateDashboard() {
+      if (gameSessions.length === 0) {
+        document.getElementById('sessions-body').innerHTML = 
+          '<tr><td colspan="5" class="no-data">No sessions yet. Start practicing on Zetamac!</td></tr>';
+        return;
+      }
+
+      // Calculate statistics
+      const scores = gameSessions.map(s => s.score);
+      const totalSessions = gameSessions.length;
+      const bestScore = Math.max(...scores);
+      const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+      const recentSession = gameSessions[gameSessions.length - 1];
+      
+      // Calculate total problems and average latency
+      let totalProblems = 0;
+      let totalLatency = 0;
+      let latencyCount = 0;
+
+      gameSessions.forEach(session => {
+        if (session.problems) {
+          totalProblems += session.problems.length;
+          session.problems.forEach(p => {
+            if (p.latency > 0) {
+              totalLatency += p.latency;
+              latencyCount++;
+            }
+          });
+        }
+      });
+
+      const avgLatency = latencyCount > 0 ? (totalLatency / latencyCount / 1000).toFixed(2) : 0;
+
+      // Find best score date
+      const bestSessionIndex = scores.indexOf(bestScore);
+      const bestSession = gameSessions[bestSessionIndex];
+
+      // Update stat cards
+      document.getElementById('total-sessions').textContent = totalSessions;
+      document.getElementById('best-score').textContent = bestScore;
+      document.getElementById('best-date').textContent = formatDate(bestSession.timestamp);
+      document.getElementById('avg-score').textContent = avgScore;
+      document.getElementById('recent-score').textContent = recentSession.score;
+      document.getElementById('recent-date').textContent = formatDate(recentSession.timestamp);
+      document.getElementById('total-problems').textContent = totalProblems;
+      document.getElementById('avg-latency').textContent = avgLatency + 's';
+
+      // Create charts
+      createScoreChart();
+      createOperationsChart();
+      
+      // Populate table
+      populateSessionsTable();
+    }
+
+    function formatDate(timestamp) {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now - date;
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+
+      if (minutes < 60) return `${minutes}m ago`;
+      if (hours < 24) return `${hours}h ago`;
+      if (days < 7) return `${days}d ago`;
+      
+      return date.toLocaleDateString();
+    }
+
+    function createScoreChart() {
+      const ctx = document.getElementById('score-chart');
+      
+      // Destroy existing chart if it exists
+      if (window.scoreChart) {
+        window.scoreChart.destroy();
+      }
+
+      const labels = gameSessions.map((_, i) => `Session ${i + 1}`);
+      const data = gameSessions.map(s => s.score);
+
+      window.scoreChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Score',
+            data: data,
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+            tension: 0.4,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: {
+            legend: {
+              display: false
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+
+    function createOperationsChart() {
+      const ctx = document.getElementById('operations-chart');
+      
+      // Destroy existing chart if it exists
+      if (window.operationsChart) {
+        window.operationsChart.destroy();
+      }
+
+      // Count operations
+      const operationCounts = {
+        addition: 0,
+        subtraction: 0,
+        multiplication: 0,
+        division: 0,
+        unknown: 0
+      };
+
+      gameSessions.forEach(session => {
+        if (session.problems) {
+          session.problems.forEach(p => {
+            const type = p.operationType || 'unknown';
+            operationCounts[type] = (operationCounts[type] || 0) + 1;
+          });
+        }
+      });
+
+      window.operationsChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Addition', 'Subtraction', 'Multiplication', 'Division', 'Unknown'],
+          datasets: [{
+            data: [
+              operationCounts.addition,
+              operationCounts.subtraction,
+              operationCounts.multiplication,
+              operationCounts.division,
+              operationCounts.unknown
+            ],
+            backgroundColor: [
+              '#1976d2',
+              '#f57c00',
+              '#388e3c',
+              '#c2185b',
+              '#757575'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: {
+            legend: {
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+
+    function populateSessionsTable() {
+      const tbody = document.getElementById('sessions-body');
+      tbody.innerHTML = '';
+
+      // Show last 10 sessions
+      const recentSessions = gameSessions.slice(-10).reverse();
+
+      recentSessions.forEach(session => {
+        const row = document.createElement('tr');
+        
+        const date = new Date(session.timestamp);
+        const problemCount = session.problems ? session.problems.length : 0;
+        
+        // Calculate average time
+        let avgTime = 0;
+        if (session.problems) {
+          const validLatencies = session.problems.filter(p => p.latency > 0);
+          if (validLatencies.length > 0) {
+            avgTime = (validLatencies.reduce((sum, p) => sum + p.latency, 0) / validLatencies.length / 1000).toFixed(2);
+          }
+        }
+
+        // Count operations
+        const ops = { addition: 0, subtraction: 0, multiplication: 0, division: 0 };
+        if (session.problems) {
+          session.problems.forEach(p => {
+            if (p.operationType && ops.hasOwnProperty(p.operationType)) {
+              ops[p.operationType]++;
+            }
+          });
+        }
+
+        row.innerHTML = `
+          <td>${date.toLocaleString()}</td>
+          <td><strong>${session.score}</strong></td>
+          <td>${problemCount}</td>
+          <td>${avgTime}s</td>
+          <td>
+            ${ops.addition > 0 ? `<span class="operation-badge addition">+ ${ops.addition}</span> ` : ''}
+            ${ops.subtraction > 0 ? `<span class="operation-badge subtraction">− ${ops.subtraction}</span> ` : ''}
+            ${ops.multiplication > 0 ? `<span class="operation-badge multiplication">× ${ops.multiplication}</span> ` : ''}
+            ${ops.division > 0 ? `<span class="operation-badge division">÷ ${ops.division}</span> ` : ''}
+          </td>
+        `;
+        
+        tbody.appendChild(row);
+      });
+    }
+
+    function clearAllData() {
+      if (confirm('Are you sure you want to clear all session data? This cannot be undone.')) {
+        chrome.storage.local.remove('gameSessions', () => {
+          alert('All data cleared!');
+          window.location.reload();
+        });
+      }
+    }
+
+    // Load data when page loads
+    loadData();
+  </script>
 </body>
 </html>
