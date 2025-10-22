@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Smart Zetamac Coach",
+  "version": "1.0",
+  "description": "Track your Zetamac performance",
+
+  "permissions": [
+    "storage"
+  ],
+
+  "host_permissions": [
+    "https://arithmetic.zetamac.com/*",
+    "https://script.google.com/macros/s/*",
+    "https://script.googleusercontent.com/*"  
+  ],
+
+  "background": {
+    "service_worker": "background/index.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://arithmetic.zetamac.com/*"],
+      "js": ["content/inject.js"],
+      "run_at": "document_end"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup/popup.html"
+  }
+}

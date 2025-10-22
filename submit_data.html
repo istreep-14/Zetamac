@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Submit Data</title>
+</head>
+<body>
+
+<form id="dataForm" method="post" action="https://script.google.com/macros/s/AKfycbzjSQv1-2R-XgggXKO2khIPk4sK3R7Y9chhrPMk9WkXqYJHjDTI4xZ6G_4tcAxnYfXc9Q/execL">
+  <input type="hidden" name="timestamp" id="timestampInput">
+  <input type="hidden" name="score" id="scoreInput">
+  <input type="hidden" name="gameUrl" id="gameUrlInput">
+  <input type="hidden" name="problems" id="problemsInput">
+</form>
+
+<script>
+  console.log('submit_data.html script started');
+  // This script will receive data from the extension's background or content script
+  // and populate the form fields before submitting it.
+
+  // Listen for messages from the extension
+  window.addEventListener('message', function(event) {
+    console.log('Message received in submit_data.html:', event.data);
+
+    // IMPORTANT: Verify the origin of the message for security
+    // if (event.origin !== 'YOUR_EXTENSION_ORIGIN') return; 
+
+    if (event.data.action === "submitGameData") {
+      // Populate the form fields with the received data
+      document.getElementById('timestampInput').value = event.data.data.timestamp;
+      document.getElementById('scoreInput').value = event.data.data.score;
+      document.getElementById('gameUrlInput').value = event.data.data.gameUrl;
+      document.getElementById('problemsInput').value = JSON.stringify(event.data.data.problems); // Stringify the problems array
+
+      // Submit the form
+      console.log('Populated form fields, attempting to submit form...');
+      document.getElementById('dataForm').submit();
+
+      // Optionally send a response back to the sender (if needed)
+      // event.source.postMessage({ status: "Form submitted" }, event.origin);
+    }
+  });
+</script>
+
+</body>
+</html>
