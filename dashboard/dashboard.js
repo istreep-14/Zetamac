@@ -1,8 +1,9 @@
-// dashboard/dashboard.js - Pure vanilla JavaScript, no external dependencies
+// dashboard/dashboard.js - Enhanced version with detailed game view
 
 let allSessions = [];
 let filteredSessions = [];
-let chart = null;
+let chartData = [];
+let hoveredPoint = null;
 
 const opColors = {
   addition: '#3b82f6',
@@ -18,11 +19,41 @@ const opIcons = {
   division: '÷'
 };
 
+// Time formatting
+function getTimeAgo(timestamp) {
+  const now = new Date();
+  const past = new Date(timestamp);
+  const diffMs = now - past;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  const diffWeek = Math.floor(diffDay / 7);
+  const diffMonth = Math.floor(diffDay / 30);
+  const diffYear = Math.floor(diffDay / 365);
+
+  if (diffSec < 60) return `${diffSec} second${diffSec !== 1 ? 's' : ''} ago`;
+  if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;
+  if (diffHour < 24) return `${diffHour} hour${diffHour !== 1 ? 's' : ''} ago`;
+  if (diffDay < 7) return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
+  if (diffWeek < 4) return `${diffWeek} week${diffWeek !== 1 ? 's' : ''} ago`;
+  if (diffMonth < 12) return `${diffMonth} month${diffMonth !== 1 ? 's' : ''} ago`;
+  return `${diffYear} year${diffYear !== 1 ? 's' : ''} ago`;
+}
+
+function formatDuration(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds === 60) return '1 min';
+  if (seconds === 120) return '2 min';
+  if (seconds === 300) return '5 min';
+  if (seconds === 600) return '10 min';
+  return `${Math.floor(seconds / 60)} min`;
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   console.log('Dashboard loading...');
   
-  // Load sessions from storage
   chrome.storage.local.get(['gameSessions'], (result) => {
     allSessions = result.gameSessions || [];
     console.log(`Loaded ${allSessions.length} sessions`);
@@ -32,9 +63,14 @@ document.addEventListener('DOMContentLoaded', () => {
     drawChart();
   });
 
-  // Setup filters
   document.getElementById('mode-filter').addEventListener('change', applyFilters);
   document.getElementById('duration-filter').addEventListener('change', applyFilters);
+
+  // Chart hover handling
+  const canvas = document.getElementById('chart');
+  canvas.addEventListener('mousemove', handleChartHover);
+  canvas.addEventListener('mouseleave', hideChartTooltip);
+  canvas.addEventListener('click', handleChartClick);
 });
 
 function applyFilters() {
@@ -144,7 +180,7 @@ function updateOperations() {
   container.innerHTML = opStats.map(op => `
     <div class="operation-card">
       <div class="op-header">
-        <div style="display: flex; align-items: center; gap: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
           <div class="op-icon" style="background-color: ${opColors[op.type]}">
             ${opIcons[op.type]}
           </div>
@@ -173,13 +209,13 @@ function updateSessionsTable() {
   const tbody = document.getElementById('sessions-body');
   
   if (filteredSessions.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No sessions yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">No sessions yet</td></tr>';
     return;
   }
 
-  const recentSessions = filteredSessions.slice(-10).reverse();
+  const recentSessions = filteredSessions.slice(-20).reverse();
   
-  tbody.innerHTML = recentSessions.map(session => {
+  tbody.innerHTML = recentSessions.map((session, index) => {
     const ops = { addition: 0, subtraction: 0, multiplication: 0, division: 0 };
     
     if (session.problems) {
@@ -197,12 +233,23 @@ function updateSessionsTable() {
       )
       .join('');
 
+    const difficultyClass = session.mode === 'Hard' ? 'difficulty-hard' : 
+                           session.mode === 'Normal' ? 'difficulty-normal' : 'difficulty-easy';
+    
+    const exactDate = new Date(session.timestamp).toLocaleString();
+    const timeAgo = getTimeAgo(session.timestamp);
+    const normalized = (session.normalized120 || session.score).toFixed(1);
+
     return `
       <tr>
-        <td>${new Date(session.timestamp).toLocaleString()}</td>
-        <td><span class="session-score">${session.score}</span></td>
-        <td><span class="session-normalized">${(session.normalized120 || session.score).toFixed(1)}</span></td>
+        <td><span class="time-ago" title="${exactDate}">${timeAgo}</span></td>
+        <td>
+          <span class="difficulty-badge ${difficultyClass}">${session.mode || 'Normal'}</span>
+          <span class="duration-badge">${formatDuration(session.duration)}</span>
+        </td>
+        <td><span class="session-score" title="2-min normalized: ${normalized}">${session.score}</span></td>
         <td>${opBadges}</td>
+        <td><button class="details-btn" onclick="showSessionDetails(${filteredSessions.length - 1 - index})">Details</button></td>
       </tr>
     `;
   }).join('');
@@ -212,7 +259,6 @@ function drawChart() {
   const canvas = document.getElementById('chart');
   const ctx = canvas.getContext('2d');
   
-  // Clear canvas
   canvas.width = canvas.offsetWidth;
   canvas.height = 300;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -222,20 +268,23 @@ function drawChart() {
     ctx.font = '16px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
+    chartData = [];
     return;
   }
 
   const data = filteredSessions.map(s => s.normalized120 || s.score);
   const maxValue = Math.max(...data);
-  const minValue = Math.min(...data);
-  const range = maxValue - minValue;
-  const padding = 40;
+  const padding = 50;
   
   const chartWidth = canvas.width - padding * 2;
   const chartHeight = canvas.height - padding * 2;
   
+  // Draw background
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(padding, padding, chartWidth, chartHeight);
+
   // Draw axes
-  ctx.strokeStyle = '#ccc';
+  ctx.strokeStyle = '#d0d0d0';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(padding, padding);
@@ -246,26 +295,29 @@ function drawChart() {
   // Draw grid lines
   ctx.strokeStyle = '#f0f0f0';
   ctx.lineWidth = 1;
-  for (let i = 0; i <= 5; i++) {
-    const y = padding + (chartHeight / 5) * i;
+  const gridLines = 5;
+  for (let i = 0; i <= gridLines; i++) {
+    const y = padding + (chartHeight / gridLines) * i;
     ctx.beginPath();
     ctx.moveTo(padding, y);
     ctx.lineTo(canvas.width - padding, y);
     ctx.stroke();
   }
 
-  // Draw labels
+  // Draw Y-axis labels
   ctx.fillStyle = '#666';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'right';
   
-  for (let i = 0; i <= 5; i++) {
-    const value = maxValue - (range / 5) * i;
-    const y = padding + (chartHeight / 5) * i;
+  for (let i = 0; i <= gridLines; i++) {
+    const value = maxValue - (maxValue / gridLines) * i;
+    const y = padding + (chartHeight / gridLines) * i;
     ctx.fillText(value.toFixed(0), padding - 10, y + 5);
   }
 
-  // Draw line
+  // Store chart data for hover detection
+  chartData = [];
+  
   if (data.length > 1) {
     const stepX = chartWidth / (data.length - 1);
     
@@ -280,7 +332,14 @@ function drawChart() {
     
     data.forEach((value, index) => {
       const x = padding + stepX * index;
-      const y = canvas.height - padding - ((value - minValue) / range) * chartHeight;
+      const y = canvas.height - padding - (value / maxValue) * chartHeight;
+      
+      chartData.push({
+        x, y, value,
+        session: filteredSessions[index],
+        index
+      });
+      
       if (index === 0) {
         ctx.lineTo(x, y);
       } else {
@@ -297,31 +356,209 @@ function drawChart() {
     ctx.lineWidth = 3;
     ctx.beginPath();
     
-    data.forEach((value, index) => {
-      const x = padding + stepX * index;
-      const y = canvas.height - padding - ((value - minValue) / range) * chartHeight;
-      
+    chartData.forEach((point, index) => {
       if (index === 0) {
-        ctx.moveTo(x, y);
+        ctx.moveTo(point.x, point.y);
       } else {
-        ctx.lineTo(x, y);
+        ctx.lineTo(point.x, point.y);
       }
     });
     
     ctx.stroke();
 
     // Draw dots
-    ctx.fillStyle = '#8b5cf6';
-    data.forEach((value, index) => {
-      const x = padding + stepX * index;
-      const y = canvas.height - padding - ((value - minValue) / range) * chartHeight;
-      
+    chartData.forEach(point => {
+      ctx.fillStyle = '#8b5cf6';
       ctx.beginPath();
-      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
       ctx.fill();
     });
+
+    // Highlight hovered point
+    if (hoveredPoint !== null && chartData[hoveredPoint]) {
+      const point = chartData[hoveredPoint];
+      ctx.fillStyle = '#667eea';
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 }
+
+function handleChartHover(e) {
+  if (chartData.length === 0) return;
+  
+  const canvas = document.getElementById('chart');
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  
+  // Find closest point
+  let closestIndex = -1;
+  let closestDist = Infinity;
+  
+  chartData.forEach((point, index) => {
+    const dist = Math.sqrt(Math.pow(mouseX - point.x, 2) + Math.pow(mouseY - point.y, 2));
+    if (dist < 20 && dist < closestDist) {
+      closestDist = dist;
+      closestIndex = index;
+    }
+  });
+  
+  if (closestIndex !== hoveredPoint) {
+    hoveredPoint = closestIndex;
+    drawChart();
+    
+    if (hoveredPoint !== -1) {
+      showChartTooltip(chartData[hoveredPoint], mouseX, mouseY);
+    } else {
+      hideChartTooltip();
+    }
+  }
+}
+
+function showChartTooltip(point, mouseX, mouseY) {
+  const tooltip = document.getElementById('chart-tooltip');
+  const session = point.session;
+  const date = new Date(session.timestamp);
+  
+  tooltip.innerHTML = `
+    <div class="tooltip-date">${date.toLocaleDateString()} ${date.toLocaleTimeString()}</div>
+    <div class="tooltip-score">Score: ${point.value.toFixed(1)}</div>
+    <button class="tooltip-btn" onclick="showSessionDetails(${point.index})">View Details</button>
+  `;
+  
+  const canvas = document.getElementById('chart');
+  const rect = canvas.getBoundingClientRect();
+  
+  // Position tooltip
+  let left = mouseX + 10;
+  let top = mouseY + 10;
+  
+  // Keep tooltip in bounds
+  if (left + 200 > canvas.width) left = mouseX - 210;
+  if (top + 100 > canvas.height) top = mouseY - 110;
+  
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = top + 'px';
+  tooltip.classList.add('show');
+}
+
+function hideChartTooltip() {
+  const tooltip = document.getElementById('chart-tooltip');
+  tooltip.classList.remove('show');
+}
+
+function handleChartClick(e) {
+  if (hoveredPoint !== -1) {
+    showSessionDetails(hoveredPoint);
+  }
+}
+
+window.showSessionDetails = function(index) {
+  const session = filteredSessions[index];
+  if (!session) return;
+  
+  const modal = document.getElementById('details-modal');
+  const title = document.getElementById('modal-title');
+  const stats = document.getElementById('modal-stats');
+  const problemsBody = document.getElementById('modal-problems');
+  
+  const date = new Date(session.timestamp);
+  title.textContent = `Session Details - ${date.toLocaleString()}`;
+  
+  // Calculate total latency
+  let totalLatency = 0;
+  let answeredCount = 0;
+  if (session.problems) {
+    session.problems.forEach(p => {
+      totalLatency += p.latency || 0;
+      if (p.answered !== false) answeredCount++;
+    });
+  }
+  
+  const totalLatencySec = (totalLatency / 1000).toFixed(2);
+  const avgLatency = session.problems && session.problems.length > 0 
+    ? (totalLatency / session.problems.length / 1000).toFixed(2) 
+    : '0';
+  
+  stats.innerHTML = `
+    <div class="modal-stat">
+      <div class="modal-stat-label">Score</div>
+      <div class="modal-stat-value">${session.score}</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-label">Normalized (2min)</div>
+      <div class="modal-stat-value">${(session.normalized120 || session.score).toFixed(1)}</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-label">Duration</div>
+      <div class="modal-stat-value">${formatDuration(session.duration)}</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-label">Mode</div>
+      <div class="modal-stat-value">${session.mode || 'Normal'}</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-label">Problems</div>
+      <div class="modal-stat-value">${session.problems ? session.problems.length : 0}</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-label">Avg Time</div>
+      <div class="modal-stat-value">${avgLatency}s</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-label">Total Time</div>
+      <div class="modal-stat-value">${totalLatencySec}s</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-label">Time Gap</div>
+      <div class="modal-stat-value">${(session.duration - parseFloat(totalLatencySec)).toFixed(2)}s</div>
+    </div>
+  `;
+  
+  if (session.problems && session.problems.length > 0) {
+    problemsBody.innerHTML = session.problems.map((problem, idx) => {
+      const answered = problem.answered !== false;
+      const operatorDisplay = problem.operator || opIcons[problem.operationType] || '?';
+      const timeDisplay = problem.latency > 0 ? (problem.latency / 1000).toFixed(2) : '0.00';
+      
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${problem.question || `${problem.a} ${operatorDisplay} ${problem.b}`}</td>
+          <td style="text-align: center; font-size: 1.125rem; font-weight: bold;">${operatorDisplay}</td>
+          <td>${problem.answer || problem.c || '-'}</td>
+          <td>${timeDisplay}</td>
+          <td class="${answered ? 'answered-yes' : 'answered-no'}">${answered ? 'Yes' : 'No'}</td>
+        </tr>
+      `;
+    }).join('');
+  } else {
+    problemsBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No problem data available</td></tr>';
+  }
+  
+  modal.classList.add('show');
+};
+
+window.closeModal = function() {
+  const modal = document.getElementById('details-modal');
+  modal.classList.remove('show');
+};
+
+// Close modal on outside click
+document.addEventListener('click', (e) => {
+  const modal = document.getElementById('details-modal');
+  if (e.target === modal) {
+    closeModal();
+  }
+});
 
 // Redraw chart on window resize
 window.addEventListener('resize', () => {
