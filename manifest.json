@@ -13,6 +13,10 @@
     "https://script.google.com/macros/s/*"
   ],
 
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+
   "background": {
     "service_worker": "background/index.js"
   },
