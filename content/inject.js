@@ -1,4 +1,4 @@
-// content/inject.js - Improved tracking with structured problem parsing
+// content/inject.js - Fixed version with proper problem parsing
 
 let currentProblem = null;
 let problemStartTime = null;
@@ -37,7 +37,6 @@ function getGameSettings() {
 }
 
 function parseProblem(problemText) {
-  // Clean the problem text
   const clean = problemText.replace(/\s+/g, ' ').trim();
   
   // Match different operator formats
@@ -50,49 +49,43 @@ function parseProblem(problemText) {
     const a = parseInt(addMatch[1]);
     const b = parseInt(addMatch[2]);
     return {
-      original: clean,
+      question: clean,
       a: a,
       b: b,
-      operator: '+',
-      operationType: 'addition',
-      answer: a + b
+      c: a + b,
+      operationType: 'addition'
     };
   } else if (subMatch) {
-    // For subtraction: shown as "result - subtrahend", so c - a = b
     const c = parseInt(subMatch[1]);
     const a = parseInt(subMatch[2]);
+    const b = c - a;
     return {
-      original: clean,
-      a: a,  // Store the subtrahend
-      b: c - a,  // Calculate minuend
-      c: c,  // Store result
-      operator: '-',
-      operationType: 'subtraction',
-      answer: c - a
+      question: clean,
+      a: a,
+      b: b,
+      c: c,
+      operationType: 'subtraction'
     };
   } else if (mulMatch) {
     const a = parseInt(mulMatch[1]);
     const b = parseInt(mulMatch[2]);
     return {
-      original: clean,
+      question: clean,
       a: a,
       b: b,
-      operator: '×',
-      operationType: 'multiplication',
-      answer: a * b
+      c: a * b,
+      operationType: 'multiplication'
     };
   } else if (divMatch) {
-    // For division: shown as "result ÷ divisor", so c ÷ a = b
     const c = parseInt(divMatch[1]);
     const a = parseInt(divMatch[2]);
+    const b = Math.floor(c / a);
     return {
-      original: clean,
-      a: a,  // Store the divisor
-      b: Math.floor(c / a),  // Calculate quotient
-      c: c,  // Store result
-      operator: '÷',
-      operationType: 'division',
-      answer: Math.floor(c / a)
+      question: clean,
+      a: a,
+      b: b,
+      c: c,
+      operationType: 'division'
     };
   }
   
@@ -104,7 +97,6 @@ function getCurrentProblem() {
   if (problemElement) {
     const text = problemElement.textContent?.trim();
     if (text) {
-      // More flexible matching for all operators
       const mathMatch = text.match(/(\d+\s*[+\-–—×x*÷\/]\s*\d+)/);
       if (mathMatch && mathMatch[1].length < 30) {
         return mathMatch[1].replace(/\s+/g, ' ').trim();
@@ -144,7 +136,6 @@ function getTimeRemaining() {
     }
   }
 
-  // Fallback search
   const allElements = document.querySelectorAll('*');
   for (let element of allElements) {
     const text = element.textContent?.trim();
@@ -165,27 +156,21 @@ function logProblemData(problemText, latency) {
   const parsed = parseProblem(problemText);
   
   if (parsed) {
-    const problemData = {
-      question: parsed.original,
+    gameData.push({
+      question: parsed.question,
       a: parsed.a,
       b: parsed.b,
-      operator: parsed.operator,
+      c: parsed.c,
       operationType: parsed.operationType,
-      answer: parsed.answer,
       latency: latency
-    };
-    
-    // Include c for subtraction and division
-    if (parsed.c !== undefined) {
-      problemData.c = parsed.c;
-    }
-    
-    gameData.push(problemData);
-    console.log(`Problem #${gameData.length}: ${parsed.original} [${parsed.a} ${parsed.operator} ${parsed.b} = ${parsed.answer}] (${latency}ms)`);
+    });
+    console.log(`Problem #${gameData.length}: ${parsed.operationType} [${parsed.a}, ${parsed.b}, ${parsed.c}] (${latency}ms)`);
   } else {
-    // Fallback for unparseable problems
     gameData.push({
       question: problemText,
+      a: '',
+      b: '',
+      c: '',
       operationType: 'unknown',
       latency: latency
     });
@@ -208,19 +193,20 @@ function checkGameEnd() {
       const score = getScoreValue();
       const settings = getGameSettings();
       
-      // Log final problem
       if (currentProblem && problemStartTime) {
         const latency = Date.now() - problemStartTime;
         logProblemData(currentProblem, latency);
       }
 
-      // Match score with tracked problems
       const deficit = score - gameData.length;
       if (deficit > 0) {
         console.log(`Adding ${deficit} ultra-fast problems`);
         for (let i = 0; i < deficit; i++) {
           gameData.push({
             question: `ultra-fast-${gameData.length + 1}`,
+            a: '',
+            b: '',
+            c: '',
             operationType: 'unknown',
             latency: 0
           });
@@ -229,12 +215,10 @@ function checkGameEnd() {
         gameData = gameData.slice(0, score);
       }
 
-      // Calculate normalized metrics
       const duration = settings.duration || maxTimerSeen || 120;
       const scorePerSecond = score / duration;
       const normalized120 = scorePerSecond * 120;
 
-      // Save session data
       const sessionData = {
         timestamp: new Date().toISOString(),
         score: score,
@@ -256,7 +240,6 @@ function checkGameEnd() {
         chrome.storage.local.set({ gameSessions }, () => {
           console.log('Session saved to local storage');
           
-          // Send to Google Sheets
           chrome.runtime.sendMessage(
             { action: "sendGameData", data: sessionData },
             (response) => {
@@ -270,7 +253,6 @@ function checkGameEnd() {
         });
       });
 
-      // Reset for next game
       gameActive = false;
       gameData = [];
       lastScoreCheck = 0;
@@ -279,7 +261,6 @@ function checkGameEnd() {
       maxTimerSeen = 0;
     }, 1000);
   } else if (timeRemaining > 0 && sessionSaved) {
-    // New game started
     console.log(`New game started (${getGameSettings().mode} ${getGameSettings().duration}s)`);
     sessionSaved = false;
     gameActive = true;
@@ -304,13 +285,11 @@ function startProblemObserver() {
     maxTimerSeen = timeRemaining;
   }
 
-  // More aggressive problem detection for fast answers
   let lastProblemCheck = "";
   
   const observer = new MutationObserver(() => {
     const newProblem = getCurrentProblem();
     
-    // Check for initial problem
     if (!currentProblem && newProblem) {
       currentProblem = newProblem;
       problemStartTime = Date.now();
@@ -318,7 +297,6 @@ function startProblemObserver() {
       console.log(`Initial problem: ${newProblem}`);
     }
 
-    // Detect problem changes (including ultra-fast ones)
     if (newProblem && newProblem !== currentProblem && newProblem !== lastProblemCheck && gameActive) {
       if (currentProblem && problemStartTime) {
         const latency = Date.now() - problemStartTime;
@@ -330,7 +308,6 @@ function startProblemObserver() {
       lastProblemCheck = newProblem;
     }
 
-    // Check score changes for ultra-fast problems we missed
     const currentScore = getScoreValue();
     if (currentScore > lastScoreCheck && gameActive) {
       const scoreIncrease = currentScore - lastScoreCheck;
@@ -338,10 +315,13 @@ function startProblemObserver() {
       
       if (scoreIncrease > problemsLoggedSinceLastCheck) {
         const missed = scoreIncrease - problemsLoggedSinceLastCheck;
-        console.log(`Score jumped by ${scoreIncrease}, only logged ${problemsLoggedSinceLastCheck} - adding ${missed} ultra-fast`);
+        console.log(`Score jumped - adding ${missed} ultra-fast`);
         for (let i = 0; i < missed; i++) {
           gameData.push({
             question: `ultra-fast-${gameData.length + 1}`,
+            a: '',
+            b: '',
+            c: '',
             operationType: 'unknown',
             latency: 0
           });
@@ -359,7 +339,6 @@ function startProblemObserver() {
     characterData: true
   });
 
-  // High-frequency polling to catch ultra-fast problem changes
   setInterval(() => {
     if (gameActive) {
       const newProblem = getCurrentProblem();
@@ -373,7 +352,7 @@ function startProblemObserver() {
         lastProblemCheck = newProblem;
       }
     }
-  }, 25); // Poll every 25ms to catch ultra-fast changes
+  }, 25);
 }
 
 setTimeout(() => {
