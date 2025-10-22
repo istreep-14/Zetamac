@@ -1,36 +1,60 @@
-// dashboard.js - Dashboard logic with Chart.js drawing (no CDN needed)
+// dashboard/dashboard.js - Enhanced dashboard with filtering
 
 let gameSessions = [];
-let scoreChart = null;
-let operationsChart = null;
+let filteredSessions = [];
+let currentFilter = { mode: 'all', duration: 'all' };
 
 function loadData() {
   chrome.storage.local.get(['gameSessions'], (result) => {
     gameSessions = result.gameSessions || [];
-    updateDashboard();
+    applyFilters();
   });
 }
 
+function applyFilters() {
+  filteredSessions = gameSessions.filter(session => {
+    const modeMatch = currentFilter.mode === 'all' || session.mode === currentFilter.mode;
+    const durationMatch = currentFilter.duration === 'all' || session.duration === parseInt(currentFilter.duration);
+    return modeMatch && durationMatch;
+  });
+  
+  updateDashboard();
+}
+
 function updateDashboard() {
-  if (gameSessions.length === 0) {
+  if (filteredSessions.length === 0) {
     document.getElementById('sessions-body').innerHTML = 
-      '<tr><td colspan="5" class="no-data">No sessions yet. Start practicing on Zetamac!</td></tr>';
+      '<tr><td colspan="5" class="no-data">No sessions match your filters. Try practicing on Zetamac!</td></tr>';
+    
+    // Reset stat cards
+    document.getElementById('total-sessions').textContent = '0';
+    document.getElementById('best-score').textContent = '-';
+    document.getElementById('best-date').textContent = '';
+    document.getElementById('avg-score').textContent = '-';
+    document.getElementById('recent-score').textContent = '-';
+    document.getElementById('recent-date').textContent = '';
+    document.getElementById('total-problems').textContent = '0';
+    document.getElementById('avg-latency').textContent = '-';
+    
     return;
   }
 
   // Calculate statistics
-  const scores = gameSessions.map(s => s.score);
-  const totalSessions = gameSessions.length;
+  const scores = filteredSessions.map(s => s.score);
+  const normalized = filteredSessions.map(s => s.normalized120 || s.score);
+  const totalSessions = filteredSessions.length;
   const bestScore = Math.max(...scores);
   const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-  const recentSession = gameSessions[gameSessions.length - 1];
+  const bestNormalized = Math.max(...normalized).toFixed(1);
+  const avgNormalized = (normalized.reduce((a, b) => a + b, 0) / normalized.length).toFixed(1);
+  const recentSession = filteredSessions[filteredSessions.length - 1];
   
   // Calculate total problems and average latency
   let totalProblems = 0;
   let totalLatency = 0;
   let latencyCount = 0;
 
-  gameSessions.forEach(session => {
+  filteredSessions.forEach(session => {
     if (session.problems) {
       totalProblems += session.problems.length;
       session.problems.forEach(p => {
@@ -46,13 +70,13 @@ function updateDashboard() {
 
   // Find best score date
   const bestSessionIndex = scores.indexOf(bestScore);
-  const bestSession = gameSessions[bestSessionIndex];
+  const bestSession = filteredSessions[bestSessionIndex];
 
   // Update stat cards
   document.getElementById('total-sessions').textContent = totalSessions;
-  document.getElementById('best-score').textContent = bestScore;
+  document.getElementById('best-score').textContent = `${bestScore} (${bestNormalized})`;
   document.getElementById('best-date').textContent = formatDate(bestSession.timestamp);
-  document.getElementById('avg-score').textContent = avgScore;
+  document.getElementById('avg-score').textContent = `${avgScore} (${avgNormalized})`;
   document.getElementById('recent-score').textContent = recentSession.score;
   document.getElementById('recent-date').textContent = formatDate(recentSession.timestamp);
   document.getElementById('total-problems').textContent = totalProblems;
@@ -85,22 +109,21 @@ function createScoreChart() {
   const canvas = document.getElementById('score-chart');
   const ctx = canvas.getContext('2d');
   
-  // Set canvas size
   canvas.width = canvas.offsetWidth;
   canvas.height = 300;
   
-  const labels = gameSessions.map((_, i) => i + 1);
-  const data = gameSessions.map(s => s.score);
+  const labels = filteredSessions.map((_, i) => i + 1);
+  const rawData = filteredSessions.map(s => s.score);
+  const normalizedData = filteredSessions.map(s => s.normalized120 || s.score);
   
-  const maxScore = Math.max(...data, 50); // At least 50 for scale
-  const padding = 40;
+  const maxScore = Math.max(...normalizedData, 50);
+  const padding = 50;
   const chartWidth = canvas.width - padding * 2;
   const chartHeight = canvas.height - padding * 2;
   
-  // Clear canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  // Draw grid lines
+  // Draw grid
   ctx.strokeStyle = '#e0e0e0';
   ctx.lineWidth = 1;
   for (let i = 0; i <= 5; i++) {
@@ -110,7 +133,6 @@ function createScoreChart() {
     ctx.lineTo(canvas.width - padding, y);
     ctx.stroke();
     
-    // Y-axis labels
     ctx.fillStyle = '#666';
     ctx.font = '12px Arial';
     ctx.textAlign = 'right';
@@ -118,29 +140,26 @@ function createScoreChart() {
     ctx.fillText(value, padding - 10, y + 4);
   }
   
-  // Draw line chart
-  if (data.length > 0) {
+  // Draw normalized score line
+  if (normalizedData.length > 0) {
     ctx.strokeStyle = '#667eea';
     ctx.lineWidth = 3;
     ctx.beginPath();
     
-    data.forEach((score, i) => {
-      const x = padding + (chartWidth / (data.length - 1 || 1)) * i;
+    normalizedData.forEach((score, i) => {
+      const x = padding + (chartWidth / (normalizedData.length - 1 || 1)) * i;
       const y = padding + chartHeight - (score / maxScore) * chartHeight;
       
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     });
     
     ctx.stroke();
     
     // Draw points
     ctx.fillStyle = '#667eea';
-    data.forEach((score, i) => {
-      const x = padding + (chartWidth / (data.length - 1 || 1)) * i;
+    normalizedData.forEach((score, i) => {
+      const x = padding + (chartWidth / (normalizedData.length - 1 || 1)) * i;
       const y = padding + chartHeight - (score / maxScore) * chartHeight;
       
       ctx.beginPath();
@@ -158,17 +177,16 @@ function createScoreChart() {
   ctx.lineTo(canvas.width - padding, canvas.height - padding);
   ctx.stroke();
   
-  // X-axis label
+  // Labels
   ctx.fillStyle = '#666';
   ctx.font = '14px Arial';
   ctx.textAlign = 'center';
   ctx.fillText('Session Number', canvas.width / 2, canvas.height - 10);
   
-  // Y-axis label
   ctx.save();
   ctx.translate(15, canvas.height / 2);
   ctx.rotate(-Math.PI / 2);
-  ctx.fillText('Score', 0, 0);
+  ctx.fillText('Normalized Score (120s)', 0, 0);
   ctx.restore();
 }
 
@@ -176,11 +194,9 @@ function createOperationsChart() {
   const canvas = document.getElementById('operations-chart');
   const ctx = canvas.getContext('2d');
   
-  // Set canvas size
   canvas.width = canvas.offsetWidth;
   canvas.height = 300;
   
-  // Count operations
   const operationCounts = {
     addition: 0,
     subtraction: 0,
@@ -189,7 +205,7 @@ function createOperationsChart() {
     unknown: 0
   };
 
-  gameSessions.forEach(session => {
+  filteredSessions.forEach(session => {
     if (session.problems) {
       session.problems.forEach(p => {
         const type = p.operationType || 'unknown';
@@ -208,6 +224,8 @@ function createOperationsChart() {
   
   const total = data.reduce((sum, d) => sum + d.value, 0);
   
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
   if (total === 0) {
     ctx.fillStyle = '#999';
     ctx.font = '16px Arial';
@@ -216,10 +234,6 @@ function createOperationsChart() {
     return;
   }
   
-  // Clear canvas
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw doughnut chart
   const centerX = canvas.width / 2;
   const centerY = canvas.height / 2 - 20;
   const radius = Math.min(centerX, centerY) - 40;
@@ -230,7 +244,6 @@ function createOperationsChart() {
   data.forEach(item => {
     const sliceAngle = (item.value / total) * Math.PI * 2;
     
-    // Draw slice
     ctx.fillStyle = item.color;
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
@@ -241,7 +254,7 @@ function createOperationsChart() {
     currentAngle += sliceAngle;
   });
   
-  // Draw legend
+  // Legend
   const legendY = canvas.height - 30;
   const legendItemWidth = canvas.width / data.length;
   
@@ -251,11 +264,9 @@ function createOperationsChart() {
   data.forEach((item, i) => {
     const x = legendItemWidth * i + legendItemWidth / 2;
     
-    // Draw color box
     ctx.fillStyle = item.color;
     ctx.fillRect(x - 20, legendY - 8, 12, 12);
     
-    // Draw label
     ctx.fillStyle = '#333';
     ctx.fillText(`${item.label} (${item.value})`, x + 10, legendY);
   });
@@ -265,8 +276,7 @@ function populateSessionsTable() {
   const tbody = document.getElementById('sessions-body');
   tbody.innerHTML = '';
 
-  // Show last 10 sessions
-  const recentSessions = gameSessions.slice(-10).reverse();
+  const recentSessions = filteredSessions.slice(-10).reverse();
 
   recentSessions.forEach(session => {
     const row = document.createElement('tr');
@@ -274,7 +284,6 @@ function populateSessionsTable() {
     const date = new Date(session.timestamp);
     const problemCount = session.problems ? session.problems.length : 0;
     
-    // Calculate average time
     let avgTime = 0;
     if (session.problems) {
       const validLatencies = session.problems.filter(p => p.latency > 0);
@@ -283,7 +292,6 @@ function populateSessionsTable() {
       }
     }
 
-    // Count operations
     const ops = { addition: 0, subtraction: 0, multiplication: 0, division: 0 };
     if (session.problems) {
       session.problems.forEach(p => {
@@ -293,9 +301,11 @@ function populateSessionsTable() {
       });
     }
 
+    const normalized = session.normalized120 ? session.normalized120.toFixed(1) : session.score;
+
     row.innerHTML = `
       <td>${date.toLocaleString()}</td>
-      <td><strong>${session.score}</strong></td>
+      <td><strong>${session.score}</strong> <span style="color: #667eea;">(${normalized})</span></td>
       <td>${problemCount}</td>
       <td>${avgTime}s</td>
       <td>
@@ -325,6 +335,51 @@ document.getElementById('refresh-btn').addEventListener('click', () => {
 });
 
 document.getElementById('clear-btn').addEventListener('click', clearAllData);
+
+// Add filter controls
+const filterContainer = document.createElement('div');
+filterContainer.className = 'filter-container';
+filterContainer.style.cssText = 'background: white; border-radius: 15px; padding: 20px; margin-bottom: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);';
+filterContainer.innerHTML = `
+  <div style="display: flex; gap: 20px; align-items: center;">
+    <div>
+      <label style="font-weight: 600; margin-right: 10px;">Mode:</label>
+      <select id="mode-filter" style="padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+        <option value="all">All</option>
+        <option value="Normal">Normal</option>
+        <option value="Hard">Hard</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-weight: 600; margin-right: 10px;">Duration:</label>
+      <select id="duration-filter" style="padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+        <option value="all">All</option>
+        <option value="30">30s</option>
+        <option value="60">60s</option>
+        <option value="120">120s (2 min)</option>
+        <option value="300">300s (5 min)</option>
+        <option value="600">600s (10 min)</option>
+      </select>
+    </div>
+    <div style="margin-left: auto; color: #666; font-size: 14px;">
+      <strong>Note:</strong> Scores shown as Raw (Normalized to 120s)
+    </div>
+  </div>
+`;
+
+const container = document.querySelector('.container');
+const statsGrid = document.querySelector('.stats-grid');
+container.insertBefore(filterContainer, statsGrid);
+
+document.getElementById('mode-filter').addEventListener('change', (e) => {
+  currentFilter.mode = e.target.value;
+  applyFilters();
+});
+
+document.getElementById('duration-filter').addEventListener('change', (e) => {
+  currentFilter.duration = e.target.value;
+  applyFilters();
+});
 
 // Load data when page loads
 loadData();
