@@ -1,7 +1,9 @@
-// popup/popup.js - Simplified version without dump/clear functionality
+// popup/popup.js - Fixed with better error handling and logging
+
+console.log("Popup script starting...");
 
 document.addEventListener('DOMContentLoaded', () => {
-  console.log("Popup loaded");
+  console.log("Popup loaded - DOMContentLoaded fired");
 
   const loadingElement = document.getElementById('loading');
   const contentElement = document.getElementById('content');
@@ -17,24 +19,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const dashboardBtn = document.getElementById('dashboard-btn');
   const practiceBtn = document.getElementById('practice-btn');
 
+  console.log("Elements found:", {
+    loading: !!loadingElement,
+    content: !!contentElement,
+    dashboard: !!dashboardBtn,
+    practice: !!practiceBtn
+  });
+
   const updateUI = (sessions) => {
     console.log("Updating UI with sessions:", sessions);
-    loadingElement.style.display = 'none';
-    contentElement.style.display = 'block';
+    
+    if (loadingElement) loadingElement.style.display = 'none';
+    if (contentElement) contentElement.style.display = 'block';
 
     if (!sessions || sessions.length === 0) {
-      sessionCountElement.textContent = '0';
-      bestScoreElement.textContent = '-';
-      bestNormalizedElement.textContent = '-';
-      avgScoreElement.textContent = '-';
-      avgNormalizedElement.textContent = '-';
-      recentScoreElement.textContent = '-';
-      recentNormalizedElement.textContent = '-';
+      console.log("No sessions found");
+      if (sessionCountElement) sessionCountElement.textContent = '0';
+      if (bestScoreElement) bestScoreElement.textContent = '-';
+      if (bestNormalizedElement) bestNormalizedElement.textContent = '-';
+      if (avgScoreElement) avgScoreElement.textContent = '-';
+      if (avgNormalizedElement) avgNormalizedElement.textContent = '-';
+      if (recentScoreElement) recentScoreElement.textContent = '-';
+      if (recentNormalizedElement) recentNormalizedElement.textContent = '-';
       
-      tipTextElement.textContent = "Start practicing to track your progress!";
-      tipElement.style.display = 'block';
+      if (tipTextElement) tipTextElement.textContent = "Start practicing to track your progress!";
+      if (tipElement) tipElement.style.display = 'block';
       return;
     }
+
+    console.log(`Found ${sessions.length} sessions`);
 
     const scores = sessions.map(s => s.score);
     const normalized = sessions.map(s => s.normalized120 || s.score);
@@ -44,36 +57,55 @@ document.addEventListener('DOMContentLoaded', () => {
     const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
     const avgNorm = (normalized.reduce((a, b) => a + b, 0) / normalized.length).toFixed(1);
 
-    sessionCountElement.textContent = sessions.length;
-    bestScoreElement.textContent = bestScore;
-    bestNormalizedElement.textContent = normalized[bestIndex].toFixed(1);
-    avgScoreElement.textContent = avgScore;
-    avgNormalizedElement.textContent = avgNorm;
-    recentScoreElement.textContent = recentSession.score;
-    recentNormalizedElement.textContent = (recentSession.normalized120 || recentSession.score).toFixed(1);
+    if (sessionCountElement) sessionCountElement.textContent = sessions.length;
+    if (bestScoreElement) bestScoreElement.textContent = bestScore;
+    if (bestNormalizedElement) bestNormalizedElement.textContent = normalized[bestIndex].toFixed(1);
+    if (avgScoreElement) avgScoreElement.textContent = avgScore;
+    if (avgNormalizedElement) avgNormalizedElement.textContent = avgNorm;
+    if (recentScoreElement) recentScoreElement.textContent = recentSession.score;
+    if (recentNormalizedElement) recentNormalizedElement.textContent = (recentSession.normalized120 || recentSession.score).toFixed(1);
 
     // Show tip based on recent performance
     const recentNorm = recentSession.normalized120 || recentSession.score;
+    let tipText = "";
     if (recentNorm < 40) {
-      tipTextElement.textContent = "Focus on accuracy first, then speed will follow!";
-      tipElement.style.display = 'block';
+      tipText = "Focus on accuracy first, then speed will follow!";
     } else if (recentNorm < 80) {
-      tipTextElement.textContent = "Good progress! Try to recognize patterns in problems.";
-      tipElement.style.display = 'block';
+      tipText = "Good progress! Try to recognize patterns in problems.";
     } else if (recentNorm >= 80) {
-      tipTextElement.textContent = "Excellent! You're performing at a high level!";
-      tipElement.style.display = 'block';
+      tipText = "Excellent! You're performing at a high level!";
     }
+    
+    if (tipTextElement && tipText) {
+      tipTextElement.textContent = tipText;
+      if (tipElement) tipElement.style.display = 'block';
+    }
+
+    console.log("UI updated successfully");
   };
 
-  console.log("Loading sessions from storage");
+  console.log("Loading sessions from storage...");
+  
+  // Check if chrome.storage is available
+  if (typeof chrome === 'undefined' || !chrome.storage) {
+    console.error("chrome.storage is not available!");
+    return;
+  }
+
   chrome.storage.local.get(['gameSessions'], (result) => {
-    console.log("Retrieved data:", result);
+    if (chrome.runtime.lastError) {
+      console.error("Error reading storage:", chrome.runtime.lastError);
+      return;
+    }
+    
+    console.log("Retrieved data from storage:", result);
     const gameSessions = result.gameSessions || [];
+    console.log(`Found ${gameSessions.length} sessions in storage`);
     updateUI(gameSessions);
   });
 
   if (dashboardBtn) {
+    console.log("Setting up dashboard button");
     dashboardBtn.addEventListener('click', () => {
       console.log("Opening dashboard");
       chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
@@ -81,8 +113,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (practiceBtn) {
+    console.log("Setting up practice button");
     practiceBtn.addEventListener('click', () => {
+      console.log("Opening practice site");
       chrome.tabs.create({ url: 'https://arithmetic.zetamac.com/' });
     });
   }
+  
+  console.log("Popup initialization complete");
 });
+
+console.log("Popup script loaded");
