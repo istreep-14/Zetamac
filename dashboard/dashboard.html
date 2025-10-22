@@ -144,6 +144,8 @@
 
     canvas {
       max-height: 300px;
+      display: block;
+      margin: 0 auto;
     }
 
     .actions {
@@ -170,6 +172,16 @@
     .btn-primary:hover {
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(255,255,255,0.3);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.3);
     }
 
     .btn-danger {
@@ -254,6 +266,7 @@
 
     <div class="actions">
       <button class="btn btn-primary" id="refresh-btn">🔄 Refresh</button>
+      <button class="btn btn-secondary" id="dump-data-btn">📤 Dump to Sheet</button>
       <button class="btn btn-danger" id="clear-btn">🗑️ Clear All Data</button>
     </div>
   </div>
