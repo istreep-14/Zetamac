@@ -55,22 +55,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const recentSessions = sessions.slice(-100);
       
       chrome.storage.local.set({ gameSessions: recentSessions }, () => {
-        console.log('Session saved to local storage (keeping last 100)');
-        
-        // Send to Google Sheets
-        sendGameDataToGoogleSheet(request.data)
-          .then(result => {
-            console.log('Sheet write result:', result);
-            sendResponse(result);
-          })
-          .catch(error => {
-            console.error('Sheet write error:', error);
-            sendResponse({ success: false, error: error.message });
-          });
+        console.log('Session saved to local storage');
       });
     });
     
-    return true; // Keep channel open for async response
+    // Send to Google Sheets
+    sendGameDataToGoogleSheet(request.data)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
   }
 });
 
