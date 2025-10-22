@@ -1,18 +1,21 @@
-// popup/popup.js - Fixed version
+// popup/popup.js - Simplified version without dump/clear functionality
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log("Popup loaded");
 
   const loadingElement = document.getElementById('loading');
   const contentElement = document.getElementById('content');
-  const recentScoreElement = document.getElementById('recent-score');
   const sessionCountElement = document.getElementById('session-count');
   const bestScoreElement = document.getElementById('best-score');
-  const recommendationElement = document.getElementById('recommendation');
-  const recommendationTextElement = document.getElementById('recommendation-text');
+  const bestNormalizedElement = document.getElementById('best-normalized');
+  const avgScoreElement = document.getElementById('avg-score');
+  const avgNormalizedElement = document.getElementById('avg-normalized');
+  const recentScoreElement = document.getElementById('recent-score');
+  const recentNormalizedElement = document.getElementById('recent-normalized');
+  const tipElement = document.getElementById('tip');
+  const tipTextElement = document.getElementById('tip-text');
   const dashboardBtn = document.getElementById('dashboard-btn');
-  const zetamacBtn = document.getElementById('zetamac-btn');
-  const dumpDataBtn = document.getElementById('dump-data-btn');
+  const practiceBtn = document.getElementById('practice-btn');
 
   const updateUI = (sessions) => {
     console.log("Updating UI with sessions:", sessions);
@@ -20,33 +23,46 @@ document.addEventListener('DOMContentLoaded', () => {
     contentElement.style.display = 'block';
 
     if (!sessions || sessions.length === 0) {
-      recentScoreElement.textContent = 'N/A';
       sessionCountElement.textContent = '0';
-      bestScoreElement.textContent = 'N/A';
-      recommendationElement.style.display = 'none';
+      bestScoreElement.textContent = '-';
+      bestNormalizedElement.textContent = '-';
+      avgScoreElement.textContent = '-';
+      avgNormalizedElement.textContent = '-';
+      recentScoreElement.textContent = '-';
+      recentNormalizedElement.textContent = '-';
+      
+      tipTextElement.textContent = "Start practicing to track your progress!";
+      tipElement.style.display = 'block';
       return;
     }
 
+    const scores = sessions.map(s => s.score);
+    const normalized = sessions.map(s => s.normalized120 || s.score);
     const recentSession = sessions[sessions.length - 1];
-    const recentScore = recentSession.score;
-    const sessionCount = sessions.length;
-    const bestScore = Math.max(...sessions.map(session => session.score));
+    const bestScore = Math.max(...scores);
+    const bestIndex = scores.indexOf(bestScore);
+    const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+    const avgNorm = (normalized.reduce((a, b) => a + b, 0) / normalized.length).toFixed(1);
 
-    recentScoreElement.textContent = recentScore;
-    sessionCountElement.textContent = sessionCount;
+    sessionCountElement.textContent = sessions.length;
     bestScoreElement.textContent = bestScore;
+    bestNormalizedElement.textContent = normalized[bestIndex].toFixed(1);
+    avgScoreElement.textContent = avgScore;
+    avgNormalizedElement.textContent = avgNorm;
+    recentScoreElement.textContent = recentSession.score;
+    recentNormalizedElement.textContent = (recentSession.normalized120 || recentSession.score).toFixed(1);
 
-    if (recentScore < 10) {
-      recommendationTextElement.textContent = "Keep practicing! Focus on getting quicker with basic operations.";
-      recommendationElement.style.display = 'block';
-    } else if (recentScore < 20) {
-      recommendationTextElement.textContent = "Good progress! Try to reduce your time on each problem.";
-      recommendationElement.style.display = 'block';
-    } else if (recentScore >= 20) {
-      recommendationTextElement.textContent = "Great job! Challenge yourself with more complex operations or higher speed settings.";
-      recommendationElement.style.display = 'block';
-    } else {
-      recommendationElement.style.display = 'none';
+    // Show tip based on recent performance
+    const recentNorm = recentSession.normalized120 || recentSession.score;
+    if (recentNorm < 40) {
+      tipTextElement.textContent = "Focus on accuracy first, then speed will follow!";
+      tipElement.style.display = 'block';
+    } else if (recentNorm < 80) {
+      tipTextElement.textContent = "Good progress! Try to recognize patterns in problems.";
+      tipElement.style.display = 'block';
+    } else if (recentNorm >= 80) {
+      tipTextElement.textContent = "Excellent! You're performing at a high level!";
+      tipElement.style.display = 'block';
     }
   };
 
@@ -64,28 +80,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (zetamacBtn) {
-    zetamacBtn.addEventListener('click', () => {
+  if (practiceBtn) {
+    practiceBtn.addEventListener('click', () => {
       chrome.tabs.create({ url: 'https://arithmetic.zetamac.com/' });
-    });
-  }
-
-  if (dumpDataBtn) {
-    dumpDataBtn.addEventListener('click', () => {
-      console.log("Dumping data to sheet");
-      dumpDataBtn.disabled = true;
-      dumpDataBtn.textContent = 'Sending...';
-      
-      chrome.runtime.sendMessage({ action: "dumpAllData" }, (response) => {
-        dumpDataBtn.disabled = false;
-        dumpDataBtn.textContent = 'Dump Data to Sheet';
-        
-        if (response?.success) {
-          alert(`Successfully sent ${response.sent} of ${response.total} sessions to Google Sheets!`);
-        } else {
-          alert('Error: ' + (response?.error || 'Unknown error'));
-        }
-      });
     });
   }
 });
