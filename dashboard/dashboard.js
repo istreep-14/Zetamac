@@ -1,570 +1,834 @@
-// dashboard/dashboard.js - Enhanced version with detailed game view
-
-let allSessions = [];
-let filteredSessions = [];
-let chartData = [];
-let hoveredPoint = null;
-
-const opColors = {
-  addition: '#3b82f6',
-  subtraction: '#f97316',
-  multiplication: '#10b981',
-  division: '#ec4899'
-};
-
-const opIcons = {
-  addition: '+',
-  subtraction: '−',
-  multiplication: '×',
-  division: '÷'
-};
-
-// Time formatting
-function getTimeAgo(timestamp) {
-  const now = new Date();
-  const past = new Date(timestamp);
-  const diffMs = now - past;
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
-  const diffWeek = Math.floor(diffDay / 7);
-  const diffMonth = Math.floor(diffDay / 30);
-  const diffYear = Math.floor(diffDay / 365);
-
-  if (diffSec < 60) return `${diffSec} second${diffSec !== 1 ? 's' : ''} ago`;
-  if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;
-  if (diffHour < 24) return `${diffHour} hour${diffHour !== 1 ? 's' : ''} ago`;
-  if (diffDay < 7) return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
-  if (diffWeek < 4) return `${diffWeek} week${diffWeek !== 1 ? 's' : ''} ago`;
-  if (diffMonth < 12) return `${diffMonth} month${diffMonth !== 1 ? 's' : ''} ago`;
-  return `${diffYear} year${diffYear !== 1 ? 's' : ''} ago`;
-}
-
-function formatDuration(seconds) {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds === 60) return '1 min';
-  if (seconds === 120) return '2 min';
-  if (seconds === 300) return '5 min';
-  if (seconds === 600) return '10 min';
-  return `${Math.floor(seconds / 60)} min`;
-}
-
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('Dashboard loading...');
-  
-  chrome.storage.local.get(['gameSessions'], (result) => {
-    allSessions = result.gameSessions || [];
-    console.log(`Loaded ${allSessions.length} sessions`);
-    
-    filteredSessions = [...allSessions];
-    updateDashboard();
-    drawChart();
-  });
-
-  document.getElementById('mode-filter').addEventListener('change', applyFilters);
-  document.getElementById('duration-filter').addEventListener('change', applyFilters);
-
-  // Chart hover handling
-  const canvas = document.getElementById('chart');
-  canvas.addEventListener('mousemove', handleChartHover);
-  canvas.addEventListener('mouseleave', hideChartTooltip);
-  canvas.addEventListener('click', handleChartClick);
-});
-
-function applyFilters() {
-  const mode = document.getElementById('mode-filter').value;
-  const duration = document.getElementById('duration-filter').value;
-
-  filteredSessions = allSessions.filter(session => {
-    const modeMatch = mode === 'all' || session.mode === mode;
-    const durationMatch = duration === 'all' || session.duration === parseInt(duration);
-    return modeMatch && durationMatch;
-  });
-
-  console.log(`Filtered to ${filteredSessions.length} sessions`);
-  updateDashboard();
-  drawChart();
-}
-
-function updateDashboard() {
-  updateStats();
-  updateOperations();
-  updateSessionsTable();
-}
-
-function updateStats() {
-  const container = document.getElementById('stats');
-  
-  if (filteredSessions.length === 0) {
-    container.innerHTML = '<div class="no-data">No sessions recorded yet. Start practicing!</div>';
-    return;
-  }
-
-  const scores = filteredSessions.map(s => s.score);
-  const normalized = filteredSessions.map(s => s.normalized120 || s.score);
-  const recent = filteredSessions[filteredSessions.length - 1];
-  const bestScore = Math.max(...scores);
-  const bestIndex = scores.indexOf(bestScore);
-  const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-  const avgNorm = (normalized.reduce((a, b) => a + b, 0) / normalized.length).toFixed(1);
-
-  container.innerHTML = `
-    <div class="stat-card">
-      <div class="stat-label">Sessions</div>
-      <div class="stat-value">${filteredSessions.length}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Best</div>
-      <div class="stat-value">${bestScore}</div>
-      <div class="stat-subvalue">(${normalized[bestIndex].toFixed(1)})</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Average</div>
-      <div class="stat-value">${avgScore}</div>
-      <div class="stat-subvalue">(${avgNorm})</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Recent</div>
-      <div class="stat-value">${recent.score}</div>
-      <div class="stat-subvalue">(${(recent.normalized120 || recent.score).toFixed(1)})</div>
-    </div>
-  `;
-}
-
-function updateOperations() {
-  const container = document.getElementById('operations');
-  
-  if (filteredSessions.length === 0) {
-    container.innerHTML = '<div class="no-data">No operation data available</div>';
-    return;
-  }
-
-  const ops = {
-    addition: { times: [], count: 0 },
-    subtraction: { times: [], count: 0 },
-    multiplication: { times: [], count: 0 },
-    division: { times: [], count: 0 }
-  };
-
-  let totalProblems = 0;
-
-  filteredSessions.forEach(session => {
-    if (session.problems) {
-      session.problems.forEach(p => {
-        if (p.operationType && ops[p.operationType] && p.latency > 0) {
-          ops[p.operationType].times.push(p.latency / 1000);
-          ops[p.operationType].count++;
-          totalProblems++;
-        }
-      });
-    }
-  });
-
-  const opStats = Object.entries(ops)
-    .map(([type, data]) => {
-      if (data.count === 0) return null;
-
-      const avgTime = (data.times.reduce((a, b) => a + b, 0) / data.times.length).toFixed(2);
-      const sorted = [...data.times].sort((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length / 2)].toFixed(2);
-      const variance = data.times.reduce((sq, n) => sq + Math.pow(n - avgTime, 2), 0) / data.times.length;
-      const std = Math.sqrt(variance).toFixed(2);
-      const percentage = totalProblems > 0 ? ((data.count / totalProblems) * 100).toFixed(1) : 0;
-
-      return { type, avgTime, median, std, count: data.count, percentage };
-    })
-    .filter(op => op !== null);
-
-  container.innerHTML = opStats.map(op => `
-    <div class="operation-card">
-      <div class="op-header">
-        <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <div class="op-icon" style="background-color: ${opColors[op.type]}">
-            ${opIcons[op.type]}
-          </div>
-          <div class="op-info">
-            <h3>${op.type}</h3>
-            <div class="op-count">${op.count} problems (${op.percentage}%)</div>
-          </div>
-        </div>
-        <div>
-          <div class="op-time" style="color: ${opColors[op.type]}">${op.avgTime}s</div>
-          <div class="op-time-label">avg time</div>
-        </div>
-      </div>
-      <div class="op-bar">
-        <div class="op-bar-fill" style="width: ${op.percentage}%; background-color: ${opColors[op.type]}"></div>
-      </div>
-      <div class="op-stats">
-        <div class="op-stat-item">Median: <strong>${op.median}s</strong></div>
-        <div class="op-stat-item">Std Dev: <strong>±${op.std}s</strong></div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function updateSessionsTable() {
-  const tbody = document.getElementById('sessions-body');
-  
-  if (filteredSessions.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">No sessions yet</td></tr>';
-    return;
-  }
-
-  const recentSessions = filteredSessions.slice(-20).reverse();
-  
-  tbody.innerHTML = recentSessions.map((session, index) => {
-    const ops = { addition: 0, subtraction: 0, multiplication: 0, division: 0 };
-    
-    if (session.problems) {
-      session.problems.forEach(p => {
-        if (p.operationType && ops.hasOwnProperty(p.operationType)) {
-          ops[p.operationType]++;
-        }
-      });
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zetamac Analytics Pro</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
 
-    const opBadges = Object.entries(ops)
-      .filter(([, count]) => count > 0)
-      .map(([type, count]) => 
-        `<span class="op-badge" style="background-color: ${opColors[type]}">${opIcons[type]} ${count}</span>`
-      )
-      .join('');
+    :root {
+      --bg-dark: #0a0e17;
+      --bg-darker: #060911;
+      --bg-card: #0f1419;
+      --bg-card-hover: #151a21;
+      --accent: #00d9ff;
+      --accent-dim: #00a8cc;
+      --text-primary: #e8eaed;
+      --text-secondary: #9aa0a6;
+      --text-dim: #5f6368;
+      --border: #1e2530;
+      --border-bright: #2a3544;
+      --success: #00ff88;
+      --warning: #ffaa00;
+      --danger: #ff4444;
+      --purple: #b388ff;
+      --blue: #82b1ff;
+      --green: #69f0ae;
+    }
 
-    const difficultyClass = session.mode === 'Hard' ? 'difficulty-hard' : 
-                           session.mode === 'Normal' ? 'difficulty-normal' : 'difficulty-easy';
-    
-    const exactDate = new Date(session.timestamp).toLocaleString();
-    const timeAgo = getTimeAgo(session.timestamp);
-    const normalized = (session.normalized120 || session.score).toFixed(1);
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-darker);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
 
-    return `
-      <tr>
-        <td><span class="time-ago" title="${exactDate}">${timeAgo}</span></td>
-        <td>
-          <span class="difficulty-badge ${difficultyClass}">${session.mode || 'Normal'}</span>
-          <span class="duration-badge">${formatDuration(session.duration)}</span>
-        </td>
-        <td><span class="session-score" title="2-min normalized: ${normalized}">${session.score}</span></td>
-        <td>${opBadges}</td>
-        <td><button class="details-btn" onclick="showSessionDetails(${filteredSessions.length - 1 - index})">Details</button></td>
-      </tr>
-    `;
-  }).join('');
-}
+    /* Background gradient animation */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: radial-gradient(circle at 20% 50%, rgba(0, 217, 255, 0.03) 0%, transparent 50%),
+                  radial-gradient(circle at 80% 80%, rgba(179, 136, 255, 0.03) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
 
-function drawChart() {
-  const canvas = document.getElementById('chart');
-  const ctx = canvas.getContext('2d');
-  
-  canvas.width = canvas.offsetWidth;
-  canvas.height = 300;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+    .container {
+      max-width: 1800px;
+      margin: 0 auto;
+      padding: 2rem;
+      position: relative;
+      z-index: 1;
+    }
 
-  if (filteredSessions.length === 0) {
-    ctx.fillStyle = '#999';
-    ctx.font = '16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
-    chartData = [];
-    return;
-  }
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 3rem;
+      position: relative;
+    }
 
-  const data = filteredSessions.map(s => s.normalized120 || s.score);
-  const maxValue = Math.max(...data);
-  const padding = 50;
-  
-  const chartWidth = canvas.width - padding * 2;
-  const chartHeight = canvas.height - padding * 2;
-  
-  // Draw background
-  ctx.fillStyle = '#fafafa';
-  ctx.fillRect(padding, padding, chartWidth, chartHeight);
+    .header h1 {
+      font-size: 3rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+      letter-spacing: -1px;
+    }
 
-  // Draw axes
-  ctx.strokeStyle = '#d0d0d0';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(padding, padding);
-  ctx.lineTo(padding, canvas.height - padding);
-  ctx.lineTo(canvas.width - padding, canvas.height - padding);
-  ctx.stroke();
+    .header p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
 
-  // Draw grid lines
-  ctx.strokeStyle = '#f0f0f0';
-  ctx.lineWidth = 1;
-  const gridLines = 5;
-  for (let i = 0; i <= gridLines; i++) {
-    const y = padding + (chartHeight / gridLines) * i;
-    ctx.beginPath();
-    ctx.moveTo(padding, y);
-    ctx.lineTo(canvas.width - padding, y);
-    ctx.stroke();
-  }
+    .sync-status {
+      position: absolute;
+      top: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      font-size: 0.85rem;
+    }
 
-  // Draw Y-axis labels
-  ctx.fillStyle = '#666';
-  ctx.font = '12px sans-serif';
-  ctx.textAlign = 'right';
-  
-  for (let i = 0; i <= gridLines; i++) {
-    const value = maxValue - (maxValue / gridLines) * i;
-    const y = padding + (chartHeight / gridLines) * i;
-    ctx.fillText(value.toFixed(0), padding - 10, y + 5);
-  }
+    .sync-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s infinite;
+    }
 
-  // Store chart data for hover detection
-  chartData = [];
-  
-  if (data.length > 1) {
-    const stepX = chartWidth / (data.length - 1);
-    
-    // Draw gradient fill
-    const gradient = ctx.createLinearGradient(0, padding, 0, canvas.height - padding);
-    gradient.addColorStop(0, 'rgba(139, 92, 246, 0.3)');
-    gradient.addColorStop(1, 'rgba(139, 92, 246, 0.05)');
-    
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(padding, canvas.height - padding);
-    
-    data.forEach((value, index) => {
-      const x = padding + stepX * index;
-      const y = canvas.height - padding - (value / maxValue) * chartHeight;
-      
-      chartData.push({
-        x, y, value,
-        session: filteredSessions[index],
-        index
-      });
-      
-      if (index === 0) {
-        ctx.lineTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .filters {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .filter-group label {
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    select, button {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 0.6rem 1rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.9rem;
+    }
+
+    select:hover, button:hover {
+      border-color: var(--border-bright);
+      background: var(--bg-card-hover);
+    }
+
+    select:focus, button:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.1);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+      border: none;
+      color: var(--bg-dark);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0, 217, 255, 0.3);
+    }
+
+    /* Main Grid Layout */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 400px;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .calendar-section {
+      grid-column: 1 / 3;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      transition: all 0.3s;
+    }
+
+    .card:hover {
+      border-color: var(--border-bright);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .card-title::before {
+      content: '';
+      width: 4px;
+      height: 24px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 2px;
+    }
+
+    /* Calendar */
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.5rem;
+    }
+
+    .calendar-header {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .calendar-day-name {
+      text-align: center;
+      font-weight: 700;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 0.5rem;
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-darker);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      padding: 0.5rem;
+    }
+
+    .calendar-day:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .calendar-day.empty {
+      opacity: 0.3;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .calendar-day.today {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+    }
+
+    .calendar-day.has-data {
+      background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card-hover) 100%);
+    }
+
+    .day-number {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--text-primary);
+      margin-bottom: 0.25rem;
+    }
+
+    .day-games {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .day-score {
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-top: 0.25rem;
+    }
+
+    .day-score.excellent { color: var(--success); }
+    .day-score.good { color: var(--blue); }
+    .day-score.average { color: var(--warning); }
+    .day-score.poor { color: var(--danger); }
+
+    /* Leaderboard */
+    .leaderboard-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .leaderboard-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--bg-darker);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .leaderboard-item:hover {
+      border-color: var(--accent);
+      transform: translateX(5px);
+    }
+
+    .leaderboard-item:nth-child(even) {
+      background: var(--bg-card);
+    }
+
+    .leaderboard-rank {
+      font-size: 1.5rem;
+      font-weight: 900;
+      width: 40px;
+      text-align: center;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .leaderboard-rank.gold { 
+      background: linear-gradient(135deg, #ffd700, #ffed4e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .leaderboard-rank.silver { 
+      background: linear-gradient(135deg, #c0c0c0, #e8e8e8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .leaderboard-rank.bronze { 
+      background: linear-gradient(135deg, #cd7f32, #e8a87c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .leaderboard-info {
+      flex: 1;
+    }
+
+    .leaderboard-score {
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: var(--text-primary);
+    }
+
+    .leaderboard-details {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 0.25rem;
+    }
+
+    .leaderboard-date {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      text-align: center;
+      transition: all 0.3s;
+    }
+
+    .stat-card:hover {
+      border-color: var(--border-bright);
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 800;
+      margin-bottom: 0.75rem;
+    }
+
+    .stat-value {
+      font-size: 2.5rem;
+      font-weight: 900;
+      color: var(--accent);
+      line-height: 1;
+    }
+
+    .stat-subvalue {
+      font-size: 1rem;
+      color: var(--purple);
+      font-weight: 700;
+      margin-top: 0.5rem;
+    }
+
+    /* Performance Chart */
+    .chart-container {
+      width: 100%;
+      height: 300px;
+      position: relative;
+      background: var(--bg-darker);
+      border-radius: 0.75rem;
+      padding: 1rem;
+    }
+
+    canvas {
+      max-width: 100%;
+    }
+
+    /* Sessions Table */
+    .sessions-table-wrapper {
+      max-height: 600px;
+      overflow-y: auto;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border);
+    }
+
+    .sessions-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .sessions-table thead {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--bg-dark);
+    }
+
+    .sessions-table th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 800;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .sessions-table td {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sessions-table tbody tr {
+      background: var(--bg-card);
+      transition: all 0.2s;
+    }
+
+    .sessions-table tbody tr:nth-child(even) {
+      background: var(--bg-darker);
+    }
+
+    .sessions-table tbody tr:hover {
+      background: var(--bg-card-hover);
+      transform: scale(1.01);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.35rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .badge-normal { background: var(--warning); color: var(--bg-dark); }
+    .badge-hard { background: var(--danger); color: white; }
+    .badge-duration { background: var(--purple); color: white; }
+
+    .score-display {
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: var(--accent);
+    }
+
+    .btn-details, .btn-delete {
+      padding: 0.4rem 0.9rem;
+      font-size: 0.8rem;
+      border-radius: 0.4rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .btn-details {
+      background: var(--accent);
+      color: var(--bg-dark);
+      border: none;
+    }
+
+    .btn-details:hover {
+      background: var(--accent-dim);
+    }
+
+    .btn-delete {
+      background: transparent;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      margin-left: 0.5rem;
+    }
+
+    .btn-delete:hover {
+      background: var(--danger);
+      color: white;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 1000;
+      padding: 2rem;
+      overflow-y: auto;
+      backdrop-filter: blur(10px);
+    }
+
+    .modal.show {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 1.25rem;
+      padding: 2.5rem;
+      max-width: 1200px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.8);
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .modal-title {
+      font-size: 1.75rem;
+      font-weight: 900;
+      color: var(--text-primary);
+    }
+
+    .modal-close {
+      background: var(--danger);
+      color: white;
+      border: none;
+      padding: 0.65rem 1.5rem;
+      border-radius: 0.75rem;
+      cursor: pointer;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-secondary);
+    }
+
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-darker);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-bright);
+      border-radius: 6px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent);
+    }
+
+    /* Responsive */
+    @media (max-width: 1400px) {
+      .main-grid {
+        grid-template-columns: 1fr 1fr;
       }
-    });
-    
-    ctx.lineTo(padding + stepX * (data.length - 1), canvas.height - padding);
-    ctx.closePath();
-    ctx.fill();
-
-    // Draw line
-    ctx.strokeStyle = '#8b5cf6';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    
-    chartData.forEach((point, index) => {
-      if (index === 0) {
-        ctx.moveTo(point.x, point.y);
-      } else {
-        ctx.lineTo(point.x, point.y);
+      .calendar-section {
+        grid-column: 1 / 3;
       }
-    });
-    
-    ctx.stroke();
-
-    // Draw dots
-    chartData.forEach(point => {
-      ctx.fillStyle = '#8b5cf6';
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    // Highlight hovered point
-    if (hoveredPoint !== null && chartData[hoveredPoint]) {
-      const point = chartData[hoveredPoint];
-      ctx.fillStyle = '#667eea';
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, 8, 0, Math.PI * 2);
-      ctx.fill();
-      
-      ctx.strokeStyle = 'white';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, 8, 0, Math.PI * 2);
-      ctx.stroke();
     }
-  }
-}
 
-function handleChartHover(e) {
-  if (chartData.length === 0) return;
-  
-  const canvas = document.getElementById('chart');
-  const rect = canvas.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-  
-  // Find closest point
-  let closestIndex = -1;
-  let closestDist = Infinity;
-  
-  chartData.forEach((point, index) => {
-    const dist = Math.sqrt(Math.pow(mouseX - point.x, 2) + Math.pow(mouseY - point.y, 2));
-    if (dist < 20 && dist < closestDist) {
-      closestDist = dist;
-      closestIndex = index;
+    @media (max-width: 900px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+      .calendar-section {
+        grid-column: 1;
+      }
     }
-  });
-  
-  if (closestIndex !== hoveredPoint) {
-    hoveredPoint = closestIndex;
-    drawChart();
-    
-    if (hoveredPoint !== -1) {
-      showChartTooltip(chartData[hoveredPoint], mouseX, mouseY);
-    } else {
-      hideChartTooltip();
-    }
-  }
-}
-
-function showChartTooltip(point, mouseX, mouseY) {
-  const tooltip = document.getElementById('chart-tooltip');
-  const session = point.session;
-  const date = new Date(session.timestamp);
-  
-  tooltip.innerHTML = `
-    <div class="tooltip-date">${date.toLocaleDateString()} ${date.toLocaleTimeString()}</div>
-    <div class="tooltip-score">Score: ${point.value.toFixed(1)}</div>
-    <button class="tooltip-btn" onclick="showSessionDetails(${point.index})">View Details</button>
-  `;
-  
-  const canvas = document.getElementById('chart');
-  const rect = canvas.getBoundingClientRect();
-  
-  // Position tooltip
-  let left = mouseX + 10;
-  let top = mouseY + 10;
-  
-  // Keep tooltip in bounds
-  if (left + 200 > canvas.width) left = mouseX - 210;
-  if (top + 100 > canvas.height) top = mouseY - 110;
-  
-  tooltip.style.left = left + 'px';
-  tooltip.style.top = top + 'px';
-  tooltip.classList.add('show');
-}
-
-function hideChartTooltip() {
-  const tooltip = document.getElementById('chart-tooltip');
-  tooltip.classList.remove('show');
-}
-
-function handleChartClick(e) {
-  if (hoveredPoint !== -1) {
-    showSessionDetails(hoveredPoint);
-  }
-}
-
-window.showSessionDetails = function(index) {
-  const session = filteredSessions[index];
-  if (!session) return;
-  
-  const modal = document.getElementById('details-modal');
-  const title = document.getElementById('modal-title');
-  const stats = document.getElementById('modal-stats');
-  const problemsBody = document.getElementById('modal-problems');
-  
-  const date = new Date(session.timestamp);
-  title.textContent = `Session Details - ${date.toLocaleString()}`;
-  
-  // Calculate total latency
-  let totalLatency = 0;
-  let answeredCount = 0;
-  if (session.problems) {
-    session.problems.forEach(p => {
-      totalLatency += p.latency || 0;
-      if (p.answered !== false) answeredCount++;
-    });
-  }
-  
-  const totalLatencySec = (totalLatency / 1000).toFixed(2);
-  const avgLatency = session.problems && session.problems.length > 0 
-    ? (totalLatency / session.problems.length / 1000).toFixed(2) 
-    : '0';
-  
-  stats.innerHTML = `
-    <div class="modal-stat">
-      <div class="modal-stat-label">Score</div>
-      <div class="modal-stat-value">${session.score}</div>
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🧮 Zetamac Analytics Pro</h1>
+      <p>Advanced Performance Tracking & Analysis</p>
+      <div class="sync-status">
+        <span class="sync-indicator"></span>
+        <span id="sync-text">Synced with Google Sheets</span>
+      </div>
     </div>
-    <div class="modal-stat">
-      <div class="modal-stat-label">Normalized (2min)</div>
-      <div class="modal-stat-value">${(session.normalized120 || session.score).toFixed(1)}</div>
-    </div>
-    <div class="modal-stat">
-      <div class="modal-stat-label">Duration</div>
-      <div class="modal-stat-value">${formatDuration(session.duration)}</div>
-    </div>
-    <div class="modal-stat">
-      <div class="modal-stat-label">Mode</div>
-      <div class="modal-stat-value">${session.mode || 'Normal'}</div>
-    </div>
-    <div class="modal-stat">
-      <div class="modal-stat-label">Problems</div>
-      <div class="modal-stat-value">${session.problems ? session.problems.length : 0}</div>
-    </div>
-    <div class="modal-stat">
-      <div class="modal-stat-label">Avg Time</div>
-      <div class="modal-stat-value">${avgLatency}s</div>
-    </div>
-    <div class="modal-stat">
-      <div class="modal-stat-label">Total Time</div>
-      <div class="modal-stat-value">${totalLatencySec}s</div>
-    </div>
-    <div class="modal-stat">
-      <div class="modal-stat-label">Time Gap</div>
-      <div class="modal-stat-value">${(session.duration - parseFloat(totalLatencySec)).toFixed(2)}s</div>
-    </div>
-  `;
-  
-  if (session.problems && session.problems.length > 0) {
-    problemsBody.innerHTML = session.problems.map((problem, idx) => {
-      const answered = problem.answered !== false;
-      const operatorDisplay = problem.operator || opIcons[problem.operationType] || '?';
-      const timeDisplay = problem.latency > 0 ? (problem.latency / 1000).toFixed(2) : '0.00';
-      
-      return `
-        <tr>
-          <td>${idx + 1}</td>
-          <td>${problem.question || `${problem.a} ${operatorDisplay} ${problem.b}`}</td>
-          <td style="text-align: center; font-size: 1.125rem; font-weight: bold;">${operatorDisplay}</td>
-          <td>${problem.answer || problem.c || '-'}</td>
-          <td>${timeDisplay}</td>
-          <td class="${answered ? 'answered-yes' : 'answered-no'}">${answered ? 'Yes' : 'No'}</td>
-        </tr>
-      `;
-    }).join('');
-  } else {
-    problemsBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No problem data available</td></tr>';
-  }
-  
-  modal.classList.add('show');
-};
 
-window.closeModal = function() {
-  const modal = document.getElementById('details-modal');
-  modal.classList.remove('show');
-};
+    <div class="controls">
+      <div class="filters">
+        <div class="filter-group">
+          <label for="mode-filter">Mode:</label>
+          <select id="mode-filter">
+            <option value="all">All</option>
+            <option value="Normal">Normal</option>
+            <option value="Hard">Hard</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="duration-filter">Duration:</label>
+          <select id="duration-filter">
+            <option value="all">All</option>
+            <option value="30">30s</option>
+            <option value="60">60s</option>
+            <option value="120">2 min</option>
+            <option value="300">5 min</option>
+            <option value="600">10 min</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="refreshData()">🔄 Refresh Data</button>
+    </div>
 
-// Close modal on outside click
-document.addEventListener('click', (e) => {
-  const modal = document.getElementById('details-modal');
-  if (e.target === modal) {
-    closeModal();
-  }
-});
+    <div id="stats" class="stats-grid"></div>
 
-// Redraw chart on window resize
-window.addEventListener('resize', () => {
-  if (filteredSessions.length > 0) {
-    drawChart();
-  }
-});
+    <div class="main-grid">
+      <div class="calendar-section">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Monthly Calendar</h2>
+            <div>
+              <button onclick="previousMonth()">◀</button>
+              <span id="current-month" style="margin: 0 1rem; font-weight: 700;"></span>
+              <button onclick="nextMonth()">▶</button>
+            </div>
+          </div>
+          <div class="calendar-header">
+            <div class="calendar-day-name">Sun</div>
+            <div class="calendar-day-name">Mon</div>
+            <div class="calendar-day-name">Tue</div>
+            <div class="calendar-day-name">Wed</div>
+            <div class="calendar-day-name">Thu</div>
+            <div class="calendar-day-name">Fri</div>
+            <div class="calendar-day-name">Sat</div>
+          </div>
+          <div id="calendar" class="calendar"></div>
+        </div>
+      </div>
 
-console.log('Dashboard script loaded');
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">🏆 Leaderboard</h2>
+        </div>
+        <div id="leaderboard" class="leaderboard-list"></div>
+      </div>
+
+      <div class="card" style="grid-column: 1 / 3;">
+        <div class="card-header">
+          <h2 class="card-title">📊 Performance Trend</h2>
+        </div>
+        <div class="chart-container">
+          <canvas id="chart"></canvas>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: 1 / 3;">
+        <div class="card-header">
+          <h2 class="card-title">📝 Recent Sessions</h2>
+        </div>
+        <div class="sessions-table-wrapper">
+          <table class="sessions-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Mode</th>
+                <th>Duration</th>
+                <th>Score</th>
+                <th>Normalized</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="sessions-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Day Details Modal -->
+  <div id="day-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" id="day-modal-title"></div>
+        <button class="modal-close" onclick="closeDayModal()">Close</button>
+      </div>
+      <div class="sessions-table-wrapper">
+        <table class="sessions-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Mode</th>
+              <th>Duration</th>
+              <th>Score</th>
+              <th>Normalized</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="day-sessions-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session Details Modal -->
+  <div id="details-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" id="modal-title"></div>
+        <button class="modal-close" onclick="closeModal()">Close</button>
+      </div>
+      <div id="modal-stats" class="stats-grid"></div>
+      <div class="sessions-table-wrapper">
+        <table class="sessions-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Question</th>
+              <th>Operator</th>
+              <th>Answer</th>
+              <th>Time (s)</th>
+              <th>Game Time (s)</th>
+            </tr>
+          </thead>
+          <tbody id="modal-problems"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="dashboard_pro.js"></script>
+</body>
+</html>
