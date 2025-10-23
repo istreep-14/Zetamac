@@ -1,4 +1,4 @@
-// Google Apps Script - Fixed with correct column format
+// Google Apps Script - Enhanced with batch data loading
 // Tools > Script editor > paste this code
 
 function doPost(e) {
@@ -83,12 +83,14 @@ function doGet(e) {
       return getProblems(e);
     } else if (action === 'deleteSession') {
       return deleteSession(e);
+    } else if (action === 'getAllData') {
+      return getAllData(e);
     }
     
     return ContentService.createTextOutput(
       JSON.stringify({ 
         status: 'ready', 
-        availableActions: ['getSessions', 'getProblems', 'deleteSession'] 
+        availableActions: ['getSessions', 'getProblems', 'deleteSession', 'getAllData'] 
       })
     ).setMimeType(ContentService.MimeType.JSON);
     
@@ -192,6 +194,84 @@ function getProblems(e) {
   
   return ContentService.createTextOutput(
     JSON.stringify({ success: true, problems: problems })
+  ).setMimeType(ContentService.MimeType.JSON);
+}
+
+// NEW: Get all data in one request for faster dashboard loading
+function getAllData(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const summarySheet = ss.getSheetByName('Summary');
+  const detailSheet = ss.getSheetByName('Details');
+  
+  const result = {
+    success: true,
+    sessions: [],
+    problemsBySession: {}
+  };
+  
+  // Get sessions
+  if (summarySheet) {
+    const summaryData = summarySheet.getDataRange().getValues();
+    
+    for (let i = 1; i < summaryData.length; i++) {
+      const row = summaryData[i];
+      const timestampStr = row[6];
+      let isoTimestamp;
+      
+      try {
+        if (timestampStr instanceof Date) {
+          isoTimestamp = timestampStr.toISOString();
+        } else {
+          const parsedDate = new Date(timestampStr);
+          isoTimestamp = parsedDate.toISOString();
+        }
+      } catch (e) {
+        isoTimestamp = new Date().toISOString();
+      }
+      
+      const session = {
+        id: row[0],
+        date: row[1],
+        time: row[2],
+        score: row[3],
+        mode: row[4],
+        duration: row[5],
+        timestamp: isoTimestamp,
+        fullTimestamp: row[6],
+        key: row[7],
+        rowIndex: i + 1
+      };
+      result.sessions.push(session);
+    }
+  }
+  
+  // Get all problems
+  if (detailSheet) {
+    const detailData = detailSheet.getDataRange().getValues();
+    
+    for (let i = 1; i < detailData.length; i++) {
+      const row = detailData[i];
+      const sessionId = row[0];
+      
+      if (!result.problemsBySession[sessionId]) {
+        result.problemsBySession[sessionId] = [];
+      }
+      
+      result.problemsBySession[sessionId].push({
+        id: row[0],
+        problemNum: row[1],
+        question: row[2],
+        a: row[3],
+        b: row[4],
+        c: row[5],
+        operationType: row[6],
+        latency: row[7]
+      });
+    }
+  }
+  
+  return ContentService.createTextOutput(
+    JSON.stringify(result)
   ).setMimeType(ContentService.MimeType.JSON);
 }
 
