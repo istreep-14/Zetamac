@@ -1,4 +1,4 @@
-// content/inject.js - Enhanced with unanswered problem tracking
+// content/inject.js - Fixed ultra-fast problem logic
 
 let currentProblem = null;
 let problemStartTime = null;
@@ -210,7 +210,12 @@ function checkGameEnd() {
         logProblemData(currentProblem, latency, false);
       }
 
-      const deficit = score - gameData.filter(p => p.answered !== false).length;
+      // Count answered problems (not unanswered)
+      const answeredCount = gameData.filter(p => p.answered !== false).length;
+      const deficit = score - answeredCount;
+      
+      console.log(`Score: ${score}, Answered: ${answeredCount}, Total logged: ${gameData.length}, Deficit: ${deficit}`);
+      
       if (deficit > 0) {
         console.log(`Adding ${deficit} ultra-fast problems`);
         for (let i = 0; i < deficit; i++) {
@@ -227,7 +232,8 @@ function checkGameEnd() {
           });
         }
       } else if (deficit < 0) {
-        gameData = gameData.slice(0, score + 1);
+        // Too many problems logged, shouldn't happen but just in case
+        console.log(`Warning: logged more problems than score (${gameData.length} > ${score})`);
       }
 
       const duration = settings.duration || maxTimerSeen || 120;
@@ -328,9 +334,10 @@ function startProblemObserver() {
 
     const currentScore = getScoreValue();
     if (currentScore > lastKnownScore && gameActive) {
-      const deficit = currentScore - gameData.filter(p => p.answered !== false).length;
+      const answeredCount = gameData.filter(p => p.answered !== false).length;
+      const deficit = currentScore - answeredCount;
       if (deficit > 0) {
-        console.log(`Score is ${currentScore}, logged ${gameData.filter(p => p.answered !== false).length} - deficit: ${deficit}`);
+        console.log(`Score is ${currentScore}, logged ${answeredCount} answered - deficit: ${deficit}`);
         if (deficit > 1) {
           for (let i = 0; i < deficit - 1; i++) {
             gameData.push({
