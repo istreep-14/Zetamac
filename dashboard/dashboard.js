@@ -1,4 +1,4 @@
-// dashboard.js - Fixed with better CORS and error handling
+// dashboard.js - Fixed with event delegation (no inline handlers)
 
 const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyjxIIqmqWcPeFZ5G_m9ZGetPVlsDf28kYFN4__6yRPFZQw4a73EZjNsYNq2GSWooPi/exec';
 
@@ -18,8 +18,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('Dashboard loading...');
   await loadData();
   
+  // Filter listeners
   document.getElementById('mode-filter').addEventListener('change', applyFilters);
   document.getElementById('duration-filter').addEventListener('change', applyFilters);
+  
+  // Button listeners
   document.getElementById('refresh-btn').addEventListener('click', refreshData);
   document.getElementById('prev-month-btn').addEventListener('click', previousMonth);
   document.getElementById('next-month-btn').addEventListener('click', nextMonth);
@@ -27,7 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('close-modal-btn').addEventListener('click', closeModal);
 });
 
-// Data Loading - ONLY from Google Sheets
+// Data Loading
 async function loadData() {
   const syncText = document.getElementById('sync-text');
   syncText.textContent = 'Loading from Google Sheets...';
@@ -71,7 +74,6 @@ async function loadData() {
     syncText.textContent = '❌ Error loading data';
     syncText.style.color = '#ff4444';
     
-    // Show detailed error message
     document.getElementById('stats').innerHTML = `
       <div style="grid-column: 1/-1; padding: 2rem; text-align: center; color: var(--text-secondary); background: var(--bg-card); border-radius: 1rem; border: 1px solid var(--danger);">
         <h3 style="color: var(--danger); margin-bottom: 1rem;">⚠️ Unable to load data</h3>
@@ -86,19 +88,21 @@ async function loadData() {
             <li>Make sure your Google Apps Script is deployed as a Web App</li>
             <li>Set "Execute as: Me" and "Who has access: Anyone"</li>
             <li>Copy the Web App URL and update it in dashboard.js</li>
-            <li>Open the URL in a new tab to test if it works: <a href="${GOOGLE_SHEETS_URL}?action=getSessions" target="_blank" style="color: var(--accent);">Test Link</a></li>
+            <li>Open the URL in a new tab to test: <a href="${GOOGLE_SHEETS_URL}?action=getSessions" target="_blank" style="color: var(--accent);">Test Link</a></li>
           </ol>
         </div>
-        <button onclick="refreshData()" style="margin-top: 1.5rem; padding: 0.75rem 1.5rem; background: var(--accent); color: var(--bg-dark); border: none; border-radius: 0.5rem; cursor: pointer; font-weight: 700;">
+        <button id="error-retry-btn" style="margin-top: 1.5rem; padding: 0.75rem 1.5rem; background: var(--accent); color: var(--bg-dark); border: none; border-radius: 0.5rem; cursor: pointer; font-weight: 700;">
           🔄 Retry
         </button>
       </div>
     `;
+    
+    // Add retry button listener
+    document.getElementById('error-retry-btn').addEventListener('click', refreshData);
   }
 }
 
 function convertSheetSession(sheetData) {
-  // Convert Google Sheets format to our format
   const duration = sheetData.duration || 120;
   const scorePerSecond = sheetData.score / duration;
   const normalized120 = scorePerSecond * 120;
@@ -195,8 +199,6 @@ function updateStats() {
   const bestIndex = scores.indexOf(bestScore);
   const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
   const avgNorm = (normalized.reduce((a, b) => a + b, 0) / normalized.length).toFixed(1);
-  
-  // Calculate total problems
   const totalProblems = filteredSessions.reduce((sum, s) => sum + s.score, 0);
 
   container.innerHTML = `
@@ -239,7 +241,6 @@ function updateCalendar() {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   
-  // Group sessions by date
   const sessionsByDate = {};
   filteredSessions.forEach(session => {
     const date = new Date(session.timestamp);
@@ -254,12 +255,10 @@ function updateCalendar() {
   
   calendar.innerHTML = '';
   
-  // Empty days before month starts
   for (let i = 0; i < firstDay; i++) {
     calendar.innerHTML += '<div class="calendar-day empty"></div>';
   }
   
-  // Days of month
   const today = new Date();
   for (let day = 1; day <= daysInMonth; day++) {
     const sessions = sessionsByDate[day] || [];
@@ -287,6 +286,17 @@ function updateCalendar() {
       </div>
     `;
   }
+  
+  // Add event delegation for calendar clicks
+  calendar.addEventListener('click', handleCalendarClick);
+}
+
+function handleCalendarClick(e) {
+  const dayElement = e.target.closest('.calendar-day');
+  if (dayElement && dayElement.dataset.hasSessions) {
+    const day = parseInt(dayElement.dataset.day);
+    showDayDetails(day);
+  }
 }
 
 function previousMonth() {
@@ -299,7 +309,7 @@ function nextMonth() {
   updateCalendar();
 }
 
-window.showDayDetails = function(day) {
+function showDayDetails(day) {
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
   
@@ -330,19 +340,31 @@ window.showDayDetails = function(day) {
         <td><span class="score-display">${session.score}</span></td>
         <td>${(session.normalized120 || session.score).toFixed(1)}</td>
         <td>
-          <button class="btn-details" onclick="showSessionDetails('${session.id}')">Details</button>
-          <button class="btn-delete" onclick="deleteSession('${session.id}'); closeDayModal();">×</button>
+          <button class="btn-details" data-session-id="${session.id}">Details</button>
+          <button class="btn-delete" data-session-id="${session.id}">×</button>
         </td>
       </tr>
     `;
   }).join('');
   
+  // Add event delegation for day modal buttons
+  tbody.addEventListener('click', handleDayModalClick);
+  
   modal.classList.add('show');
-};
+}
 
-window.closeDayModal = function() {
+function handleDayModalClick(e) {
+  if (e.target.classList.contains('btn-details')) {
+    showSessionDetails(e.target.dataset.sessionId);
+  } else if (e.target.classList.contains('btn-delete')) {
+    deleteSession(e.target.dataset.sessionId);
+    closeDayModal();
+  }
+}
+
+function closeDayModal() {
   document.getElementById('day-modal').classList.remove('show');
-};
+}
 
 // Leaderboard
 function updateLeaderboard() {
@@ -353,7 +375,6 @@ function updateLeaderboard() {
     return;
   }
   
-  // Get top 10 normalized scores
   const topScores = [...filteredSessions]
     .map(s => ({ ...s, displayScore: s.normalized120 || s.score }))
     .sort((a, b) => b.displayScore - a.displayScore)
@@ -367,7 +388,7 @@ function updateLeaderboard() {
     else if (rank === 3) rankClass = 'bronze';
     
     return `
-      <div class="leaderboard-item" onclick="showSessionDetails('${session.id}')">
+      <div class="leaderboard-item" data-session-id="${session.id}">
         <div class="leaderboard-rank ${rankClass}">#${rank}</div>
         <div class="leaderboard-info">
           <div class="leaderboard-score">${session.displayScore.toFixed(1)}</div>
@@ -379,6 +400,16 @@ function updateLeaderboard() {
       </div>
     `;
   }).join('');
+  
+  // Add event delegation for leaderboard clicks
+  container.addEventListener('click', handleLeaderboardClick);
+}
+
+function handleLeaderboardClick(e) {
+  const item = e.target.closest('.leaderboard-item');
+  if (item && item.dataset.sessionId) {
+    showSessionDetails(item.dataset.sessionId);
+  }
 }
 
 // Chart
@@ -405,7 +436,6 @@ function updateChart() {
   const chartWidth = canvas.width - padding * 2;
   const chartHeight = canvas.height - padding * 2;
   
-  // Draw axes
   ctx.strokeStyle = '#2a3544';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -414,7 +444,6 @@ function updateChart() {
   ctx.lineTo(canvas.width - padding, canvas.height - padding);
   ctx.stroke();
 
-  // Draw grid
   ctx.strokeStyle = '#1e2530';
   ctx.lineWidth = 1;
   for (let i = 0; i <= 5; i++) {
@@ -425,7 +454,6 @@ function updateChart() {
     ctx.stroke();
   }
 
-  // Y-axis labels
   ctx.fillStyle = '#9aa0a6';
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'right';
@@ -439,7 +467,6 @@ function updateChart() {
   if (data.length > 1) {
     const stepX = chartWidth / (data.length - 1);
     
-    // Gradient fill
     const gradient = ctx.createLinearGradient(0, padding, 0, canvas.height - padding);
     gradient.addColorStop(0, 'rgba(0, 217, 255, 0.3)');
     gradient.addColorStop(1, 'rgba(0, 217, 255, 0.05)');
@@ -459,7 +486,6 @@ function updateChart() {
     ctx.closePath();
     ctx.fill();
 
-    // Line
     ctx.strokeStyle = '#00d9ff';
     ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
@@ -474,7 +500,6 @@ function updateChart() {
     
     ctx.stroke();
 
-    // Points
     data.forEach((value, index) => {
       const x = padding + stepX * index;
       const y = canvas.height - padding - (value / maxValue) * chartHeight;
@@ -513,16 +538,27 @@ function updateSessionsTable() {
         <td><span class="score-display">${session.score}</span></td>
         <td>${(session.normalized120 || session.score).toFixed(1)}</td>
         <td>
-          <button class="btn-details" onclick="showSessionDetails('${session.id}')">Details</button>
-          <button class="btn-delete" onclick="deleteSession('${session.id}')">×</button>
+          <button class="btn-details" data-session-id="${session.id}">Details</button>
+          <button class="btn-delete" data-session-id="${session.id}">×</button>
         </td>
       </tr>
     `;
   }).join('');
+  
+  // Add event delegation for table buttons
+  tbody.addEventListener('click', handleTableClick);
+}
+
+function handleTableClick(e) {
+  if (e.target.classList.contains('btn-details')) {
+    showSessionDetails(e.target.dataset.sessionId);
+  } else if (e.target.classList.contains('btn-delete')) {
+    deleteSession(e.target.dataset.sessionId);
+  }
 }
 
 // Session Details Modal
-window.showSessionDetails = async function(sessionId) {
+async function showSessionDetails(sessionId) {
   const session = allSessions.find(s => s.id === sessionId);
   if (!session) return;
   
@@ -533,7 +569,6 @@ window.showSessionDetails = async function(sessionId) {
   
   title.textContent = `Session Details - ${session.date} ${session.time}`;
   
-  // Stats
   stats.innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Score</div>
@@ -553,7 +588,6 @@ window.showSessionDetails = async function(sessionId) {
     </div>
   `;
   
-  // Load problems from Google Sheets
   problemsBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">Loading problems...</td></tr>';
   
   try {
@@ -592,11 +626,11 @@ window.showSessionDetails = async function(sessionId) {
   }
   
   modal.classList.add('show');
-};
+}
 
-window.closeModal = function() {
+function closeModal() {
   document.getElementById('details-modal').classList.remove('show');
-};
+}
 
 // Utility Functions
 function formatDuration(seconds) {
