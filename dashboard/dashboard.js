@@ -1,7 +1,7 @@
 // dashboard_pro.js - Enhanced with Google Sheets sync
 
 // Configuration
-const GOOGLE_SHEETS_URL = 'YOUR_GOOGLE_SCRIPT_URL_HERE'; // Replace with your deployed script URL
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyjxIIqmqWcPeFZ5G_m9ZGetPVlsDf28kYFN4__6yRPFZQw4a73EZjNsYNq2GSWooPi/exec'; // Replace with your deployed script URL
 
 let allSessions = [];
 let filteredSessions = [];
