@@ -20,6 +20,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   document.getElementById('mode-filter').addEventListener('change', applyFilters);
   document.getElementById('duration-filter').addEventListener('change', applyFilters);
+  document.getElementById('refresh-btn').addEventListener('click', refreshData);
+  document.getElementById('prev-month-btn').addEventListener('click', previousMonth);
+  document.getElementById('next-month-btn').addEventListener('click', nextMonth);
+  document.getElementById('close-day-modal-btn').addEventListener('click', closeDayModal);
+  document.getElementById('close-modal-btn').addEventListener('click', closeModal);
 });
 
 // Data Loading - ONLY from Google Sheets
@@ -273,7 +278,7 @@ function updateCalendar() {
     
     calendar.innerHTML += `
       <div class="calendar-day ${isToday ? 'today' : ''} ${hasData ? 'has-data' : ''}" 
-           onclick="${hasData ? `showDayDetails(${day})` : ''}">
+           data-day="${day}" ${hasData ? 'data-has-sessions="true"' : ''}>
         <div class="day-number">${day}</div>
         ${hasData ? `
           <div class="day-games">${sessions.length} game${sessions.length > 1 ? 's' : ''}</div>
