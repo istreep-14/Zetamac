@@ -1,8 +1,10 @@
-// popup/popup.js - Fixed with better error handling and logging
+// popup/popup.js - Fixed to load from Google Sheets
+
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyjxIIqmqWcPeFZ5G_m9ZGetPVlsDf28kYFN4__6yRPFZQw4a73EZjNsYNq2GSWooPi/exec';
 
 console.log("Popup script starting...");
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   console.log("Popup loaded - DOMContentLoaded fired");
 
   const loadingElement = document.getElementById('loading');
@@ -50,24 +52,31 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log(`Found ${sessions.length} sessions`);
 
     const scores = sessions.map(s => s.score);
-    const normalized = sessions.map(s => s.normalized120 || s.score);
     const recentSession = sessions[sessions.length - 1];
     const bestScore = Math.max(...scores);
-    const bestIndex = scores.indexOf(bestScore);
     const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-    const avgNorm = (normalized.reduce((a, b) => a + b, 0) / normalized.length).toFixed(1);
+    
+    // Calculate normalized scores (score per 120 seconds)
+    const normalizedScores = sessions.map(s => {
+      const duration = s.duration || 120;
+      return (s.score / duration) * 120;
+    });
+    
+    const bestNormalized = Math.max(...normalizedScores).toFixed(1);
+    const avgNormalized = (normalizedScores.reduce((a, b) => a + b, 0) / normalizedScores.length).toFixed(1);
+    const recentNormalized = ((recentSession.score / (recentSession.duration || 120)) * 120).toFixed(1);
 
     if (sessionCountElement) sessionCountElement.textContent = sessions.length;
     if (bestScoreElement) bestScoreElement.textContent = bestScore;
-    if (bestNormalizedElement) bestNormalizedElement.textContent = normalized[bestIndex].toFixed(1);
+    if (bestNormalizedElement) bestNormalizedElement.textContent = bestNormalized;
     if (avgScoreElement) avgScoreElement.textContent = avgScore;
-    if (avgNormalizedElement) avgNormalizedElement.textContent = avgNorm;
+    if (avgNormalizedElement) avgNormalizedElement.textContent = avgNormalized;
     if (recentScoreElement) recentScoreElement.textContent = recentSession.score;
-    if (recentNormalizedElement) recentNormalizedElement.textContent = (recentSession.normalized120 || recentSession.score).toFixed(1);
+    if (recentNormalizedElement) recentNormalizedElement.textContent = recentNormalized;
 
     // Show tip based on recent performance
-    const recentNorm = recentSession.normalized120 || recentSession.score;
     let tipText = "";
+    const recentNorm = parseFloat(recentNormalized);
     if (recentNorm < 40) {
       tipText = "Focus on accuracy first, then speed will follow!";
     } else if (recentNorm < 80) {
@@ -84,33 +93,48 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log("UI updated successfully");
   };
 
-  console.log("Loading sessions from storage...");
-  
-  // Check if chrome.storage is available
-  if (typeof chrome === 'undefined' || !chrome.storage) {
-    console.error("chrome.storage is not available!");
-    return;
-  }
-
-  chrome.storage.local.get(['gameSessions'], (result) => {
-    if (chrome.runtime.lastError) {
-      console.error("Error reading storage:", chrome.runtime.lastError);
-      return;
+  // Load sessions from Google Sheets
+  const loadSessions = async () => {
+    try {
+      console.log("Loading sessions from Google Sheets...");
+      const response = await fetch(`${GOOGLE_SHEETS_URL}?action=getSessions`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Received data:", data);
+      
+      if (data.success && data.sessions) {
+        console.log(`Loaded ${data.sessions.length} sessions from Google Sheets`);
+        updateUI(data.sessions);
+      } else {
+        console.error("Failed to load sessions:", data);
+        updateUI([]);
+      }
+    } catch (error) {
+      console.error("Error loading sessions:", error);
+      if (loadingElement) {
+        loadingElement.innerHTML = `
+          <div style="color: white; padding: 20px;">
+            <p>Unable to load data from Google Sheets.</p>
+            <p style="font-size: 12px; margin-top: 10px;">Make sure the script is deployed and the URL is correct.</p>
+          </div>
+        `;
+      }
     }
-    
-    console.log("Retrieved data from storage:", result);
-    const gameSessions = result.gameSessions || [];
-    console.log(`Found ${gameSessions.length} sessions in storage`);
-    updateUI(gameSessions);
-  });
+  };
+
+  // Load sessions
+  await loadSessions();
 
   if (dashboardBtn) {
     console.log("Setting up dashboard button");
     dashboardBtn.addEventListener('click', () => {
-     chrome.tabs.create({ 
-       url: chrome.runtime.getURL('dashboard/dashboard_pro.html') 
-     });
-   });
+      chrome.tabs.create({ 
+        url: chrome.runtime.getURL('dashboard/dashboard.html') 
+      });
     });
   }
 
