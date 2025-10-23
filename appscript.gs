@@ -1,4 +1,4 @@
-// Google Apps Script - Add this to your Google Sheet
+// Google Apps Script - Enhanced with READ operations
 // Tools > Script editor > paste this code
 
 function doPost(e) {
@@ -25,7 +25,7 @@ function doPost(e) {
       detailSheet.appendRow([
         'Timestamp', 'Session Key', 'Problem #', 
         'Question', 'A', 'B', 'Operator', 'Answer',
-        'Operation Type', 'Latency (ms)'
+        'Operation Type', 'Latency (ms)', 'Game Time (s)'
       ]);
     }
     
@@ -86,7 +86,8 @@ function doPost(e) {
         problem.operator || '',
         problem.answer || '',
         problem.operationType || 'unknown',
-        problem.latency || 0
+        problem.latency || 0,
+        problem.timestamp || 0
       ]);
     });
     
@@ -103,7 +104,156 @@ function doPost(e) {
 }
 
 function doGet(e) {
+  try {
+    const action = e.parameter.action;
+    
+    if (action === 'getSessions') {
+      return getSessions(e);
+    } else if (action === 'getProblems') {
+      return getProblems(e);
+    } else if (action === 'deleteSession') {
+      return deleteSession(e);
+    }
+    
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'ready', availableActions: ['getSessions', 'getProblems', 'deleteSession'] })
+    ).setMimeType(ContentService.MimeType.JSON);
+    
+  } catch (error) {
+    Logger.log('Error in doGet: ' + error.toString());
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: false, error: error.toString() })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function getSessions(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const summarySheet = ss.getSheetByName('Summary');
+  
+  if (!summarySheet) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: true, sessions: [] })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  const data = summarySheet.getDataRange().getValues();
+  const headers = data[0];
+  const sessions = [];
+  
+  // Skip header row
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const session = {
+      timestamp: row[0],
+      score: row[1],
+      scorePerSecond: row[2],
+      normalized120: row[3],
+      key: row[4],
+      mode: row[5],
+      duration: row[6],
+      problemsCount: row[7],
+      avgLatency: row[8],
+      addition: row[9],
+      subtraction: row[10],
+      multiplication: row[11],
+      division: row[12],
+      unknown: row[13],
+      rowIndex: i + 1 // For deletion
+    };
+    sessions.push(session);
+  }
+  
   return ContentService.createTextOutput(
-    JSON.stringify({ status: 'ready' })
+    JSON.stringify({ success: true, sessions: sessions })
+  ).setMimeType(ContentService.MimeType.JSON);
+}
+
+function getProblems(e) {
+  const timestamp = e.parameter.timestamp;
+  
+  if (!timestamp) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: false, error: 'Timestamp required' })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const detailSheet = ss.getSheetByName('Details');
+  
+  if (!detailSheet) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: true, problems: [] })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  const data = detailSheet.getDataRange().getValues();
+  const problems = [];
+  
+  // Skip header row
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[0] === timestamp) {
+      problems.push({
+        timestamp: row[0],
+        sessionKey: row[1],
+        problemNum: row[2],
+        question: row[3],
+        a: row[4],
+        b: row[5],
+        operator: row[6],
+        answer: row[7],
+        operationType: row[8],
+        latency: row[9],
+        gameTime: row[10]
+      });
+    }
+  }
+  
+  return ContentService.createTextOutput(
+    JSON.stringify({ success: true, problems: problems })
+  ).setMimeType(ContentService.MimeType.JSON);
+}
+
+function deleteSession(e) {
+  const timestamp = e.parameter.timestamp;
+  
+  if (!timestamp) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: false, error: 'Timestamp required' })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const summarySheet = ss.getSheetByName('Summary');
+  const detailSheet = ss.getSheetByName('Details');
+  
+  let deleted = false;
+  
+  // Delete from Summary sheet
+  if (summarySheet) {
+    const data = summarySheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === timestamp) {
+        summarySheet.deleteRow(i + 1);
+        deleted = true;
+        break;
+      }
+    }
+  }
+  
+  // Delete from Details sheet
+  if (detailSheet) {
+    const data = detailSheet.getDataRange().getValues();
+    // Delete in reverse order to avoid index shifting
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][0] === timestamp) {
+        detailSheet.deleteRow(i + 1);
+      }
+    }
+  }
+  
+  return ContentService.createTextOutput(
+    JSON.stringify({ success: deleted, message: deleted ? 'Session deleted' : 'Session not found' })
   ).setMimeType(ContentService.MimeType.JSON);
 }
