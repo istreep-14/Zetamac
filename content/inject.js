@@ -1,11 +1,10 @@
-// content/inject.js - Fixed ultra-fast problem logic
+// content/inject.js - Simplified version (no unanswered tracking)
 
 let currentProblem = null;
 let problemStartTime = null;
 let gameData = [];
 let gameActive = false;
 let sessionSaved = false;
-let lastScoreCheck = 0;
 let maxTimerSeen = 0;
 
 // Game settings database
@@ -156,7 +155,7 @@ function getTimeRemaining() {
   return null;
 }
 
-function logProblemData(problemText, latency, answered = true) {
+function logProblemData(problemText, latency) {
   const parsed = parseProblem(problemText);
   
   if (parsed) {
@@ -168,10 +167,9 @@ function logProblemData(problemText, latency, answered = true) {
       answer: parsed.c,
       operator: parsed.operator,
       operationType: parsed.operationType,
-      latency: latency,
-      answered: answered
+      latency: latency
     });
-    console.log(`Problem #${gameData.length}: ${parsed.operationType} [${parsed.a}, ${parsed.b}, ${parsed.c}] (${latency}ms) ${answered ? '' : '[UNANSWERED]'}`);
+    console.log(`Problem #${gameData.length}: ${parsed.operationType} [${parsed.a}, ${parsed.b}, ${parsed.c}] (${latency}ms)`);
   } else {
     gameData.push({
       question: problemText,
@@ -181,10 +179,9 @@ function logProblemData(problemText, latency, answered = true) {
       answer: '',
       operator: '',
       operationType: 'unknown',
-      latency: latency,
-      answered: answered
+      latency: latency
     });
-    console.log(`Problem #${gameData.length}: ${problemText} (${latency}ms) [parse failed] ${answered ? '' : '[UNANSWERED]'}`);
+    console.log(`Problem #${gameData.length}: ${problemText} (${latency}ms) [parse failed]`);
   }
 }
 
@@ -203,18 +200,10 @@ function checkGameEnd() {
       const score = getScoreValue();
       const settings = getGameSettings();
       
-      // Log the last problem as unanswered if it exists
-      if (currentProblem && problemStartTime) {
-        const latency = Date.now() - problemStartTime;
-        console.log(`Last problem (unanswered): ${currentProblem}`);
-        logProblemData(currentProblem, latency, false);
-      }
-
-      // Count answered problems (not unanswered)
-      const answeredCount = gameData.filter(p => p.answered !== false).length;
-      const deficit = score - answeredCount;
+      // Simple logic: if we logged fewer problems than the score, add ultra-fast problems
+      const deficit = score - gameData.length;
       
-      console.log(`Score: ${score}, Answered: ${answeredCount}, Total logged: ${gameData.length}, Deficit: ${deficit}`);
+      console.log(`Final - Score: ${score}, Logged: ${gameData.length}, Deficit: ${deficit}`);
       
       if (deficit > 0) {
         console.log(`Adding ${deficit} ultra-fast problems`);
@@ -227,13 +216,9 @@ function checkGameEnd() {
             answer: '',
             operator: '',
             operationType: 'unknown',
-            latency: 0,
-            answered: true
+            latency: 0
           });
         }
-      } else if (deficit < 0) {
-        // Too many problems logged, shouldn't happen but just in case
-        console.log(`Warning: logged more problems than score (${gameData.length} > ${score})`);
       }
 
       const duration = settings.duration || maxTimerSeen || 120;
@@ -243,7 +228,6 @@ function checkGameEnd() {
       // Calculate total latency for debug
       const totalLatency = gameData.reduce((sum, p) => sum + (p.latency || 0), 0);
       console.log(`Total latency: ${totalLatency}ms (${(totalLatency/1000).toFixed(2)}s) for ${duration}s game`);
-      console.log(`Gap: ${(duration - totalLatency/1000).toFixed(2)}s (likely display rendering time)`);
 
       const sessionData = {
         timestamp: new Date().toISOString(),
@@ -272,7 +256,6 @@ function checkGameEnd() {
 
       gameActive = false;
       gameData = [];
-      lastScoreCheck = 0;
       currentProblem = null;
       problemStartTime = null;
       maxTimerSeen = 0;
@@ -282,7 +265,6 @@ function checkGameEnd() {
     sessionSaved = false;
     gameActive = true;
     gameData = [];
-    lastScoreCheck = 0;
     maxTimerSeen = timeRemaining;
   }
 }
@@ -321,10 +303,11 @@ function startProblemObserver() {
   const observer = new MutationObserver(() => {
     const newProblem = getCurrentProblem();
     
+    // When we see a new problem, log the previous one
     if (newProblem && newProblem !== currentProblem && newProblem !== lastProblemCheck && gameActive) {
       if (currentProblem && problemStartTime) {
         const latency = Date.now() - problemStartTime;
-        logProblemData(currentProblem, latency, true);
+        logProblemData(currentProblem, latency);
       }
 
       currentProblem = newProblem;
@@ -332,26 +315,23 @@ function startProblemObserver() {
       lastProblemCheck = newProblem;
     }
 
+    // Handle ultra-fast problems during gameplay
     const currentScore = getScoreValue();
     if (currentScore > lastKnownScore && gameActive) {
-      const answeredCount = gameData.filter(p => p.answered !== false).length;
-      const deficit = currentScore - answeredCount;
+      const deficit = currentScore - gameData.length;
       if (deficit > 0) {
-        console.log(`Score is ${currentScore}, logged ${answeredCount} answered - deficit: ${deficit}`);
-        if (deficit > 1) {
-          for (let i = 0; i < deficit - 1; i++) {
-            gameData.push({
-              question: `ultra-fast-${gameData.length + 1}`,
-              a: '',
-              b: '',
-              c: '',
-              answer: '',
-              operator: '',
-              operationType: 'unknown',
-              latency: 0,
-              answered: true
-            });
-          }
+        console.log(`Score: ${currentScore}, Logged: ${gameData.length} - adding ${deficit} ultra-fast`);
+        for (let i = 0; i < deficit; i++) {
+          gameData.push({
+            question: `ultra-fast-${gameData.length + 1}`,
+            a: '',
+            b: '',
+            c: '',
+            answer: '',
+            operator: '',
+            operationType: 'unknown',
+            latency: 0
+          });
         }
       }
       lastKnownScore = currentScore;
@@ -366,13 +346,14 @@ function startProblemObserver() {
     characterData: true
   });
 
+  // Backup polling
   setInterval(() => {
     if (gameActive) {
       const newProblem = getCurrentProblem();
       if (newProblem && newProblem !== currentProblem && newProblem !== lastProblemCheck) {
         if (currentProblem && problemStartTime) {
           const latency = Date.now() - problemStartTime;
-          logProblemData(currentProblem, latency, true);
+          logProblemData(currentProblem, latency);
         }
         currentProblem = newProblem;
         problemStartTime = Date.now();
