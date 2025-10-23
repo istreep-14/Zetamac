@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zetamac Dashboard</title>
+  <title>Zetamac Analytics Pro</title>
   <style>
     * {
       margin: 0;
@@ -11,361 +11,542 @@
       box-sizing: border-box;
     }
 
+    :root {
+      --bg-dark: #0a0e17;
+      --bg-darker: #060911;
+      --bg-card: #0f1419;
+      --bg-card-hover: #151a21;
+      --accent: #00d9ff;
+      --accent-dim: #00a8cc;
+      --text-primary: #e8eaed;
+      --text-secondary: #9aa0a6;
+      --text-dim: #5f6368;
+      --border: #1e2530;
+      --border-bright: #2a3544;
+      --success: #00ff88;
+      --warning: #ffaa00;
+      --danger: #ff4444;
+      --purple: #b388ff;
+      --blue: #82b1ff;
+      --green: #69f0ae;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-darker);
+      color: var(--text-primary);
       min-height: 100vh;
-      padding: 2rem;
+      overflow-x: hidden;
+    }
+
+    /* Background gradient animation */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: radial-gradient(circle at 20% 50%, rgba(0, 217, 255, 0.03) 0%, transparent 50%),
+                  radial-gradient(circle at 80% 80%, rgba(179, 136, 255, 0.03) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
     }
 
     .container {
-      max-width: 1600px;
+      max-width: 1800px;
       margin: 0 auto;
+      padding: 2rem;
+      position: relative;
+      z-index: 1;
     }
 
+    /* Header */
     .header {
       text-align: center;
-      color: white;
-      margin-bottom: 2rem;
+      margin-bottom: 3rem;
+      position: relative;
     }
 
     .header h1 {
       font-size: 3rem;
-      font-weight: bold;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
       margin-bottom: 0.5rem;
+      letter-spacing: -1px;
     }
 
     .header p {
-      font-size: 1.2rem;
-      opacity: 0.9;
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
+
+    .sync-status {
+      position: absolute;
+      top: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      font-size: 0.85rem;
+    }
+
+    .sync-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      gap: 1rem;
+      flex-wrap: wrap;
     }
 
     .filters {
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 1rem;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
       display: flex;
-      gap: 2rem;
-      justify-content: center;
-      flex-wrap: wrap;
+      gap: 1rem;
     }
 
     .filter-group {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.5rem;
     }
 
     .filter-group label {
+      color: var(--text-secondary);
       font-weight: 600;
-      color: #333;
+      font-size: 0.9rem;
     }
 
-    .filter-group select {
-      padding: 0.5rem 1rem;
-      border: 2px solid #e0e0e0;
+    select, button {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 0.6rem 1rem;
       border-radius: 0.5rem;
-      font-size: 1rem;
+      font-weight: 600;
       cursor: pointer;
-      transition: border-color 0.2s;
+      transition: all 0.2s;
+      font-size: 0.9rem;
     }
 
-    .filter-group select:focus {
+    select:hover, button:hover {
+      border-color: var(--border-bright);
+      background: var(--bg-card-hover);
+    }
+
+    select:focus, button:focus {
       outline: none;
-      border-color: #667eea;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.1);
     }
 
-    .main-layout {
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+      border: none;
+      color: var(--bg-dark);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0, 217, 255, 0.3);
+    }
+
+    /* Main Grid Layout */
+    .main-grid {
       display: grid;
-      grid-template-columns: 1fr 600px;
-      gap: 2rem;
+      grid-template-columns: 1fr 1fr 400px;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
     }
 
-    .left-column {
+    .calendar-section {
+      grid-column: 1 / 3;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      transition: all 0.3s;
+    }
+
+    .card:hover {
+      border-color: var(--border-bright);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .card-title::before {
+      content: '';
+      width: 4px;
+      height: 24px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 2px;
+    }
+
+    /* Calendar */
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.5rem;
+    }
+
+    .calendar-header {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .calendar-day-name {
+      text-align: center;
+      font-weight: 700;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 0.5rem;
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
       display: flex;
       flex-direction: column;
-      gap: 2rem;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-darker);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      padding: 0.5rem;
     }
 
+    .calendar-day:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .calendar-day.empty {
+      opacity: 0.3;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .calendar-day.today {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+    }
+
+    .calendar-day.has-data {
+      background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card-hover) 100%);
+    }
+
+    .day-number {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--text-primary);
+      margin-bottom: 0.25rem;
+    }
+
+    .day-games {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .day-score {
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-top: 0.25rem;
+    }
+
+    .day-score.excellent { color: var(--success); }
+    .day-score.good { color: var(--blue); }
+    .day-score.average { color: var(--warning); }
+    .day-score.poor { color: var(--danger); }
+
+    /* Leaderboard */
+    .leaderboard-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .leaderboard-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--bg-darker);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .leaderboard-item:hover {
+      border-color: var(--accent);
+      transform: translateX(5px);
+    }
+
+    .leaderboard-item:nth-child(even) {
+      background: var(--bg-card);
+    }
+
+    .leaderboard-rank {
+      font-size: 1.5rem;
+      font-weight: 900;
+      width: 40px;
+      text-align: center;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .leaderboard-rank.gold { 
+      background: linear-gradient(135deg, #ffd700, #ffed4e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .leaderboard-rank.silver { 
+      background: linear-gradient(135deg, #c0c0c0, #e8e8e8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .leaderboard-rank.bronze { 
+      background: linear-gradient(135deg, #cd7f32, #e8a87c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .leaderboard-info {
+      flex: 1;
+    }
+
+    .leaderboard-score {
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: var(--text-primary);
+    }
+
+    .leaderboard-details {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 0.25rem;
+    }
+
+    .leaderboard-date {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    /* Stats Grid */
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 1rem;
+      margin-bottom: 1.5rem;
     }
 
     .stat-card {
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 1rem;
       padding: 1.5rem;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
       text-align: center;
+      transition: all 0.3s;
+    }
+
+    .stat-card:hover {
+      border-color: var(--border-bright);
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     }
 
     .stat-label {
       font-size: 0.75rem;
-      color: #666;
+      color: var(--text-secondary);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-weight: 600;
+      letter-spacing: 1px;
+      font-weight: 800;
       margin-bottom: 0.75rem;
     }
 
     .stat-value {
-      font-size: 2rem;
-      font-weight: bold;
-      color: #667eea;
+      font-size: 2.5rem;
+      font-weight: 900;
+      color: var(--accent);
+      line-height: 1;
     }
 
     .stat-subvalue {
       font-size: 1rem;
-      color: #764ba2;
-      font-weight: 600;
-      margin-top: 0.25rem;
+      color: var(--purple);
+      font-weight: 700;
+      margin-top: 0.5rem;
     }
 
-    .card {
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 1rem;
-      padding: 1.5rem;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-    }
-
-    .card h2 {
-      font-size: 1.5rem;
-      color: #333;
-      margin-bottom: 1.25rem;
-    }
-
+    /* Performance Chart */
     .chart-container {
       width: 100%;
       height: 300px;
       position: relative;
-      cursor: crosshair;
-    }
-
-    .chart-tooltip {
-      position: absolute;
-      background: white;
-      border: 2px solid #667eea;
-      border-radius: 0.5rem;
-      padding: 0.75rem;
-      pointer-events: none;
-      display: none;
-      z-index: 10;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-
-    .chart-tooltip.show {
-      display: block;
-    }
-
-    .tooltip-date {
-      font-weight: 600;
-      color: #333;
-      margin-bottom: 0.25rem;
-    }
-
-    .tooltip-score {
-      color: #667eea;
-      font-size: 1.25rem;
-      font-weight: bold;
-      margin-bottom: 0.5rem;
-    }
-
-    .tooltip-btn {
-      background: #667eea;
-      color: white;
-      border: none;
-      padding: 0.375rem 0.75rem;
-      border-radius: 0.375rem;
-      font-size: 0.75rem;
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    .tooltip-btn:hover {
-      background: #5568d3;
-    }
-
-    .operations-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 1rem;
-    }
-
-    .operation-card {
-      border: 2px solid #f0f0f0;
+      background: var(--bg-darker);
       border-radius: 0.75rem;
-      padding: 1.25rem;
-      transition: all 0.3s;
+      padding: 1rem;
     }
 
-    .operation-card:hover {
-      border-color: #667eea;
-      transform: translateY(-2px);
+    canvas {
+      max-width: 100%;
     }
 
-    .op-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 0.75rem;
-    }
-
-    .op-icon {
-      width: 2.5rem;
-      height: 2.5rem;
-      border-radius: 0.5rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.25rem;
-      font-weight: bold;
-      color: white;
-    }
-
-    .op-info h3 {
-      font-size: 1rem;
-      color: #333;
-      text-transform: capitalize;
-      margin-bottom: 0.125rem;
-    }
-
-    .op-count {
-      font-size: 0.75rem;
-      color: #666;
-    }
-
-    .op-time {
-      text-align: right;
-      font-size: 1.5rem;
-      font-weight: bold;
-    }
-
-    .op-time-label {
-      font-size: 0.625rem;
-      color: #666;
-      margin-top: 0.125rem;
-    }
-
-    .op-bar {
-      width: 100%;
-      height: 0.5rem;
-      background: #e0e0e0;
-      border-radius: 1rem;
-      overflow: hidden;
-      margin: 0.75rem 0;
-    }
-
-    .op-bar-fill {
-      height: 100%;
-      transition: width 0.5s ease;
-    }
-
-    .op-stats {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.75rem;
-    }
-
-    .op-stat-item {
-      color: #666;
-    }
-
-    .op-stat-item strong {
-      color: #333;
+    /* Sessions Table */
+    .sessions-table-wrapper {
+      max-height: 600px;
+      overflow-y: auto;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border);
     }
 
     .sessions-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.875rem;
+    }
+
+    .sessions-table thead {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--bg-dark);
     }
 
     .sessions-table th {
+      padding: 1rem;
       text-align: left;
-      padding: 0.75rem;
-      font-weight: 600;
-      color: #333;
-      border-bottom: 2px solid #e0e0e0;
-      position: sticky;
-      top: 0;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
+      font-weight: 800;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid var(--border);
     }
 
     .sessions-table td {
-      padding: 0.75rem;
-      border-bottom: 1px solid #f0f0f0;
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sessions-table tbody tr {
+      background: var(--bg-card);
+      transition: all 0.2s;
+    }
+
+    .sessions-table tbody tr:nth-child(even) {
+      background: var(--bg-darker);
     }
 
     .sessions-table tbody tr:hover {
-      background: #f8f9fa;
+      background: var(--bg-card-hover);
+      transform: scale(1.01);
     }
 
-    .time-ago {
-      color: #666;
-      font-weight: 500;
-      cursor: help;
-    }
-
-    .difficulty-badge, .duration-badge {
+    .badge {
       display: inline-block;
-      padding: 0.25rem 0.625rem;
-      border-radius: 0.375rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 0.5rem;
       font-size: 0.75rem;
-      font-weight: 600;
-      color: white;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
     }
 
-    .difficulty-easy { background: #10b981; }
-    .difficulty-normal { background: #f59e0b; }
-    .difficulty-hard { background: #ef4444; }
+    .badge-normal { background: var(--warning); color: var(--bg-dark); }
+    .badge-hard { background: var(--danger); color: white; }
+    .badge-duration { background: var(--purple); color: white; }
 
-    .duration-badge {
-      background: #8b5cf6;
-      margin-left: 0.25rem;
+    .score-display {
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: var(--accent);
     }
 
-    .session-score {
-      font-size: 1.125rem;
-      font-weight: bold;
-      color: #667eea;
-      cursor: help;
+    .btn-details, .btn-delete {
+      padding: 0.4rem 0.9rem;
+      font-size: 0.8rem;
+      border-radius: 0.4rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
     }
 
-    .op-badge {
-      display: inline-block;
-      padding: 0.25rem 0.5rem;
-      border-radius: 0.25rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: white;
-      margin-right: 0.375rem;
-      margin-bottom: 0.25rem;
-    }
-
-    .details-btn {
-      background: #667eea;
-      color: white;
+    .btn-details {
+      background: var(--accent);
+      color: var(--bg-dark);
       border: none;
-      padding: 0.375rem 0.75rem;
-      border-radius: 0.375rem;
-      font-size: 0.75rem;
-      cursor: pointer;
-      font-weight: 600;
-      transition: background 0.2s;
     }
 
-    .details-btn:hover {
-      background: #5568d3;
+    .btn-details:hover {
+      background: var(--accent-dim);
     }
 
+    .btn-delete {
+      background: transparent;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      margin-left: 0.5rem;
+    }
+
+    .btn-delete:hover {
+      background: var(--danger);
+      color: white;
+    }
+
+    /* Modal */
     .modal {
       display: none;
       position: fixed;
@@ -373,134 +554,125 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.9);
       z-index: 1000;
       padding: 2rem;
       overflow-y: auto;
+      backdrop-filter: blur(10px);
     }
 
     .modal.show {
       display: flex;
       align-items: center;
       justify-content: center;
+      animation: fadeIn 0.3s ease;
     }
 
     .modal-content {
-      background: white;
-      border-radius: 1rem;
-      padding: 2rem;
-      max-width: 1000px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 1.25rem;
+      padding: 2.5rem;
+      max-width: 1200px;
       width: 100%;
       max-height: 90vh;
       overflow-y: auto;
-      position: relative;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.8);
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     .modal-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 1.5rem;
-      padding-bottom: 1rem;
-      border-bottom: 2px solid #e0e0e0;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 2px solid var(--border);
     }
 
     .modal-title {
-      font-size: 1.5rem;
-      font-weight: bold;
-      color: #333;
+      font-size: 1.75rem;
+      font-weight: 900;
+      color: var(--text-primary);
     }
 
     .modal-close {
-      background: #ef4444;
+      background: var(--danger);
       color: white;
       border: none;
-      padding: 0.5rem 1rem;
-      border-radius: 0.5rem;
+      padding: 0.65rem 1.5rem;
+      border-radius: 0.75rem;
       cursor: pointer;
-      font-weight: 600;
-    }
-
-    .modal-close:hover {
-      background: #dc2626;
-    }
-
-    .modal-stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .modal-stat {
-      background: #f9fafb;
-      padding: 1rem;
-      border-radius: 0.5rem;
-      text-align: center;
-    }
-
-    .modal-stat-label {
-      font-size: 0.75rem;
-      color: #666;
+      font-weight: 800;
       text-transform: uppercase;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
     }
 
-    .modal-stat-value {
-      font-size: 1.5rem;
-      font-weight: bold;
-      color: #667eea;
-    }
-
-    .problems-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.875rem;
-    }
-
-    .problems-table th {
-      background: #f9fafb;
-      text-align: left;
-      padding: 0.75rem;
-      font-weight: 600;
-      color: #333;
-      border-bottom: 2px solid #e0e0e0;
-    }
-
-    .problems-table td {
-      padding: 0.75rem;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    .problems-table tr:hover {
-      background: #f9fafb;
-    }
-
-    .answered-yes {
-      color: #10b981;
-      font-weight: 600;
-    }
-
-    .answered-no {
-      color: #ef4444;
-      font-weight: 600;
-    }
-
-    .no-data {
+    /* Loading */
+    .loading {
       text-align: center;
-      color: #999;
-      padding: 2rem;
-      font-size: 1rem;
+      padding: 3rem;
+      color: var(--text-secondary);
     }
 
-    canvas {
-      max-width: 100%;
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
     }
 
-    @media (max-width: 1200px) {
-      .main-layout {
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-darker);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-bright);
+      border-radius: 6px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent);
+    }
+
+    /* Responsive */
+    @media (max-width: 1400px) {
+      .main-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .calendar-section {
+        grid-column: 1 / 3;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .main-grid {
         grid-template-columns: 1fr;
+      }
+      .calendar-section {
+        grid-column: 1;
       }
     }
   </style>
@@ -508,77 +680,139 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>🧮 Zetamac Analytics</h1>
-      <p>Track your arithmetic performance</p>
-    </div>
-
-    <div class="filters">
-      <div class="filter-group">
-        <label for="mode-filter">Mode:</label>
-        <select id="mode-filter">
-          <option value="all">All</option>
-          <option value="Normal">Normal</option>
-          <option value="Hard">Hard</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label for="duration-filter">Duration:</label>
-        <select id="duration-filter">
-          <option value="all">All</option>
-          <option value="30">30s</option>
-          <option value="60">60s</option>
-          <option value="120">120s</option>
-          <option value="300">300s</option>
-          <option value="600">600s</option>
-        </select>
+      <h1>🧮 Zetamac Analytics Pro</h1>
+      <p>Advanced Performance Tracking & Analysis</p>
+      <div class="sync-status">
+        <span class="sync-indicator"></span>
+        <span id="sync-text">Synced with Google Sheets</span>
       </div>
     </div>
 
-    <div class="main-layout">
-      <div class="left-column">
-        <div id="stats" class="stats-grid"></div>
-
-        <div class="card">
-          <h2>Performance Trend</h2>
-          <div class="chart-container">
-            <canvas id="chart"></canvas>
-            <div id="chart-tooltip" class="chart-tooltip"></div>
-          </div>
+    <div class="controls">
+      <div class="filters">
+        <div class="filter-group">
+          <label for="mode-filter">Mode:</label>
+          <select id="mode-filter">
+            <option value="all">All</option>
+            <option value="Normal">Normal</option>
+            <option value="Hard">Hard</option>
+          </select>
         </div>
+        <div class="filter-group">
+          <label for="duration-filter">Duration:</label>
+          <select id="duration-filter">
+            <option value="all">All</option>
+            <option value="30">30s</option>
+            <option value="60">60s</option>
+            <option value="120">2 min</option>
+            <option value="300">5 min</option>
+            <option value="600">10 min</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="refreshData()">🔄 Refresh Data</button>
+    </div>
 
+    <div id="stats" class="stats-grid"></div>
+
+    <div class="main-grid">
+      <div class="calendar-section">
         <div class="card">
-          <h2>Operation Performance</h2>
-          <div id="operations" class="operations-grid"></div>
+          <div class="card-header">
+            <h2 class="card-title">Monthly Calendar</h2>
+            <div>
+              <button onclick="previousMonth()">◀</button>
+              <span id="current-month" style="margin: 0 1rem; font-weight: 700;"></span>
+              <button onclick="nextMonth()">▶</button>
+            </div>
+          </div>
+          <div class="calendar-header">
+            <div class="calendar-day-name">Sun</div>
+            <div class="calendar-day-name">Mon</div>
+            <div class="calendar-day-name">Tue</div>
+            <div class="calendar-day-name">Wed</div>
+            <div class="calendar-day-name">Thu</div>
+            <div class="calendar-day-name">Fri</div>
+            <div class="calendar-day-name">Sat</div>
+          </div>
+          <div id="calendar" class="calendar"></div>
         </div>
       </div>
 
       <div class="card">
-        <h2>Recent Sessions</h2>
+        <div class="card-header">
+          <h2 class="card-title">🏆 Leaderboard</h2>
+        </div>
+        <div id="leaderboard" class="leaderboard-list"></div>
+      </div>
+
+      <div class="card" style="grid-column: 1 / 3;">
+        <div class="card-header">
+          <h2 class="card-title">📊 Performance Trend</h2>
+        </div>
+        <div class="chart-container">
+          <canvas id="chart"></canvas>
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: 1 / 3;">
+        <div class="card-header">
+          <h2 class="card-title">📝 Recent Sessions</h2>
+        </div>
+        <div class="sessions-table-wrapper">
+          <table class="sessions-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Mode</th>
+                <th>Duration</th>
+                <th>Score</th>
+                <th>Normalized</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="sessions-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Day Details Modal -->
+  <div id="day-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" id="day-modal-title"></div>
+        <button class="modal-close" onclick="closeDayModal()">Close</button>
+      </div>
+      <div class="sessions-table-wrapper">
         <table class="sessions-table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Difficulty</th>
+              <th>Time</th>
+              <th>Mode</th>
+              <th>Duration</th>
               <th>Score</th>
-              <th>Operations</th>
-              <th></th>
+              <th>Normalized</th>
+              <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="sessions-body"></tbody>
+          <tbody id="day-sessions-body"></tbody>
         </table>
       </div>
     </div>
   </div>
 
+  <!-- Session Details Modal -->
   <div id="details-modal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
         <div class="modal-title" id="modal-title"></div>
         <button class="modal-close" onclick="closeModal()">Close</button>
       </div>
-      <div id="modal-stats" class="modal-stats"></div>
-      <div style="overflow-x: auto;">
-        <table class="problems-table">
+      <div id="modal-stats" class="stats-grid"></div>
+      <div class="sessions-table-wrapper">
+        <table class="sessions-table">
           <thead>
             <tr>
               <th>#</th>
@@ -586,7 +820,7 @@
               <th>Operator</th>
               <th>Answer</th>
               <th>Time (s)</th>
-              <th>Answered</th>
+              <th>Game Time (s)</th>
             </tr>
           </thead>
           <tbody id="modal-problems"></tbody>
@@ -595,6 +829,6 @@
     </div>
   </div>
 
-  <script src="dashboard.js"></script>
+  <script src="dashboard_pro.js"></script>
 </body>
 </html>
