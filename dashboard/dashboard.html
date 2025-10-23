@@ -4,665 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Zetamac Analytics Pro</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    :root {
-      --bg-dark: #0a0e17;
-      --bg-darker: #060911;
-      --bg-card: #0f1419;
-      --bg-card-hover: #151a21;
-      --accent: #00d9ff;
-      --accent-dim: #00a8cc;
-      --text-primary: #e8eaed;
-      --text-secondary: #9aa0a6;
-      --text-dim: #5f6368;
-      --border: #1e2530;
-      --border-bright: #2a3544;
-      --success: #00ff88;
-      --warning: #ffaa00;
-      --danger: #ff4444;
-      --purple: #b388ff;
-      --blue: #82b1ff;
-      --green: #69f0ae;
-    }
-
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--bg-darker);
-      color: var(--text-primary);
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-
-    body::before {
-      content: '';
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: radial-gradient(circle at 20% 50%, rgba(0, 217, 255, 0.03) 0%, transparent 50%),
-                  radial-gradient(circle at 80% 80%, rgba(179, 136, 255, 0.03) 0%, transparent 50%);
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .container {
-      max-width: 1800px;
-      margin: 0 auto;
-      padding: 2rem;
-      position: relative;
-      z-index: 1;
-    }
-
-    .header {
-      text-align: center;
-      margin-bottom: 3rem;
-      position: relative;
-    }
-
-    .header h1 {
-      font-size: 3rem;
-      font-weight: 900;
-      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 0.5rem;
-      letter-spacing: -1px;
-    }
-
-    .header p {
-      color: var(--text-secondary);
-      font-size: 1.1rem;
-      font-weight: 500;
-    }
-
-    .sync-status {
-      position: absolute;
-      top: 0;
-      right: 0;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1rem;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 0.5rem;
-      font-size: 0.85rem;
-    }
-
-    .sync-indicator {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--success);
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-
-    .controls {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 2rem;
-      gap: 1rem;
-      flex-wrap: wrap;
-    }
-
-    .filters {
-      display: flex;
-      gap: 1rem;
-    }
-
-    .filter-group {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .filter-group label {
-      color: var(--text-secondary);
-      font-weight: 600;
-      font-size: 0.9rem;
-    }
-
-    select, button {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      color: var(--text-primary);
-      padding: 0.6rem 1rem;
-      border-radius: 0.5rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-      font-size: 0.9rem;
-    }
-
-    select:hover, button:hover {
-      border-color: var(--border-bright);
-      background: var(--bg-card-hover);
-    }
-
-    select:focus, button:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.1);
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
-      border: none;
-      color: var(--bg-dark);
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(0, 217, 255, 0.3);
-    }
-
-    .main-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr 400px;
-      gap: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .calendar-section {
-      grid-column: 1 / 3;
-    }
-
-    .card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 1rem;
-      padding: 1.5rem;
-      transition: all 0.3s;
-    }
-
-    .card:hover {
-      border-color: var(--border-bright);
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-    }
-
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1.5rem;
-    }
-
-    .card-title {
-      font-size: 1.3rem;
-      font-weight: 800;
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-
-    .card-title::before {
-      content: '';
-      width: 4px;
-      height: 24px;
-      background: linear-gradient(135deg, var(--accent), var(--purple));
-      border-radius: 2px;
-    }
-
-    .calendar {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 0.5rem;
-    }
-
-    .calendar-header {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .calendar-day-name {
-      text-align: center;
-      font-weight: 700;
-      color: var(--text-secondary);
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      padding: 0.5rem;
-    }
-
-    .calendar-day {
-      aspect-ratio: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: var(--bg-darker);
-      border: 1px solid var(--border);
-      border-radius: 0.5rem;
-      cursor: pointer;
-      transition: all 0.2s;
-      position: relative;
-      padding: 0.5rem;
-    }
-
-    .calendar-day:hover {
-      border-color: var(--accent);
-      transform: translateY(-2px);
-    }
-
-    .calendar-day.empty {
-      opacity: 0.3;
-      cursor: default;
-      pointer-events: none;
-    }
-
-    .calendar-day.today {
-      border-color: var(--accent);
-      box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
-    }
-
-    .calendar-day.has-data {
-      background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card-hover) 100%);
-    }
-
-    .day-number {
-      font-weight: 700;
-      font-size: 1rem;
-      color: var(--text-primary);
-      margin-bottom: 0.25rem;
-    }
-
-    .day-games {
-      font-size: 0.7rem;
-      color: var(--text-secondary);
-      font-weight: 600;
-    }
-
-    .day-score {
-      font-size: 0.75rem;
-      font-weight: 700;
-      margin-top: 0.25rem;
-    }
-
-    .day-score.excellent { color: var(--success); }
-    .day-score.good { color: var(--blue); }
-    .day-score.average { color: var(--warning); }
-    .day-score.poor { color: var(--danger); }
-
-    .leaderboard-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-
-    .leaderboard-item {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      background: var(--bg-darker);
-      border: 1px solid var(--border);
-      border-radius: 0.75rem;
-      transition: all 0.2s;
-      cursor: pointer;
-    }
-
-    .leaderboard-item:hover {
-      border-color: var(--accent);
-      transform: translateX(5px);
-    }
-
-    .leaderboard-item:nth-child(even) {
-      background: var(--bg-card);
-    }
-
-    .leaderboard-rank {
-      font-size: 1.5rem;
-      font-weight: 900;
-      width: 40px;
-      text-align: center;
-      background: linear-gradient(135deg, var(--accent), var(--purple));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .leaderboard-rank.gold { 
-      background: linear-gradient(135deg, #ffd700, #ffed4e);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .leaderboard-rank.silver { 
-      background: linear-gradient(135deg, #c0c0c0, #e8e8e8);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .leaderboard-rank.bronze { 
-      background: linear-gradient(135deg, #cd7f32, #e8a87c);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .leaderboard-info {
-      flex: 1;
-    }
-
-    .leaderboard-score {
-      font-size: 1.3rem;
-      font-weight: 900;
-      color: var(--text-primary);
-    }
-
-    .leaderboard-details {
-      font-size: 0.8rem;
-      color: var(--text-secondary);
-      margin-top: 0.25rem;
-    }
-
-    .leaderboard-date {
-      color: var(--text-dim);
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .stat-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 1rem;
-      padding: 1.5rem;
-      text-align: center;
-      transition: all 0.3s;
-    }
-
-    .stat-card:hover {
-      border-color: var(--border-bright);
-      transform: translateY(-5px);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    }
-
-    .stat-label {
-      font-size: 0.75rem;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      font-weight: 800;
-      margin-bottom: 0.75rem;
-    }
-
-    .stat-value {
-      font-size: 2.5rem;
-      font-weight: 900;
-      color: var(--accent);
-      line-height: 1;
-    }
-
-    .stat-subvalue {
-      font-size: 1rem;
-      color: var(--purple);
-      font-weight: 700;
-      margin-top: 0.5rem;
-    }
-
-    .chart-container {
-      width: 100%;
-      height: 300px;
-      position: relative;
-      background: var(--bg-darker);
-      border-radius: 0.75rem;
-      padding: 1rem;
-    }
-
-    canvas {
-      max-width: 100%;
-    }
-
-    .sessions-table-wrapper {
-      max-height: 600px;
-      overflow-y: auto;
-      border-radius: 0.75rem;
-      border: 1px solid var(--border);
-    }
-
-    .sessions-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .sessions-table thead {
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      background: var(--bg-dark);
-    }
-
-    .sessions-table th {
-      padding: 1rem;
-      text-align: left;
-      font-weight: 800;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      font-size: 0.75rem;
-      letter-spacing: 0.5px;
-      border-bottom: 2px solid var(--border);
-    }
-
-    .sessions-table td {
-      padding: 1rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .sessions-table tbody tr {
-      background: var(--bg-card);
-      transition: all 0.2s;
-    }
-
-    .sessions-table tbody tr:nth-child(even) {
-      background: var(--bg-darker);
-    }
-
-    .sessions-table tbody tr:hover {
-      background: var(--bg-card-hover);
-      transform: scale(1.01);
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 0.35rem 0.75rem;
-      border-radius: 0.5rem;
-      font-size: 0.75rem;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-
-    .badge-normal { background: var(--warning); color: var(--bg-dark); }
-    .badge-hard { background: var(--danger); color: white; }
-    .badge-duration { background: var(--purple); color: white; }
-
-    .score-display {
-      font-size: 1.3rem;
-      font-weight: 900;
-      color: var(--accent);
-    }
-
-    .btn-details, .btn-delete {
-      padding: 0.4rem 0.9rem;
-      font-size: 0.8rem;
-      border-radius: 0.4rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-
-    .btn-details {
-      background: var(--accent);
-      color: var(--bg-dark);
-      border: none;
-    }
-
-    .btn-details:hover {
-      background: var(--accent-dim);
-    }
-
-    .btn-delete {
-      background: transparent;
-      border: 1px solid var(--danger);
-      color: var(--danger);
-      margin-left: 0.5rem;
-    }
-
-    .btn-delete:hover {
-      background: var(--danger);
-      color: white;
-    }
-
-    .modal {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.9);
-      z-index: 1000;
-      padding: 2rem;
-      overflow-y: auto;
-      backdrop-filter: blur(10px);
-    }
-
-    .modal.show {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      animation: fadeIn 0.3s ease;
-    }
-
-    .modal-content {
-      background: var(--bg-card);
-      border: 1px solid var(--border-bright);
-      border-radius: 1.25rem;
-      padding: 2.5rem;
-      max-width: 1200px;
-      width: 100%;
-      max-height: 90vh;
-      overflow-y: auto;
-      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.8);
-      animation: slideUp 0.3s ease;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(30px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 2rem;
-      padding-bottom: 1.5rem;
-      border-bottom: 2px solid var(--border);
-    }
-
-    .modal-title {
-      font-size: 1.75rem;
-      font-weight: 900;
-      color: var(--text-primary);
-    }
-
-    .modal-close {
-      background: var(--danger);
-      color: white;
-      border: none;
-      padding: 0.65rem 1.5rem;
-      border-radius: 0.75rem;
-      cursor: pointer;
-      font-weight: 800;
-      text-transform: uppercase;
-    }
-
-    .loading {
-      text-align: center;
-      padding: 3rem;
-      color: var(--text-secondary);
-    }
-
-    .spinner {
-      width: 50px;
-      height: 50px;
-      border: 4px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 1rem;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    ::-webkit-scrollbar {
-      width: 12px;
-      height: 12px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: var(--bg-darker);
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: var(--border-bright);
-      border-radius: 6px;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-      background: var(--accent);
-    }
-
-    @media (max-width: 1400px) {
-      .main-grid {
-        grid-template-columns: 1fr 1fr;
-      }
-      .calendar-section {
-        grid-column: 1 / 3;
-      }
-    }
-
-    @media (max-width: 900px) {
-      .main-grid {
-        grid-template-columns: 1fr;
-      }
-      .calendar-section {
-        grid-column: 1;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="dashboard-styles.css">
 </head>
 <body>
   <div class="container">
@@ -703,63 +45,69 @@
     <div id="stats" class="stats-grid"></div>
 
     <div class="main-grid">
-      <div class="calendar-section">
+      <div class="left-column">
         <div class="card">
           <div class="card-header">
-            <h2 class="card-title">Monthly Calendar</h2>
-            <div>
+            <h2 class="card-title">📊 Performance Trend</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="chart"></canvas>
+            <div class="chart-tooltip" id="chart-tooltip">
+              <div class="chart-tooltip-date" id="tooltip-date"></div>
+              <div class="chart-tooltip-score" id="tooltip-score"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">📝 Recent Sessions</h2>
+          </div>
+          <div class="sessions-table-wrapper">
+            <table class="sessions-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Mode</th>
+                  <th>Duration</th>
+                  <th>Score</th>
+                  <th>Normalized</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sessions-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-sidebar">
+        <div class="calendar-compact">
+          <div class="card-header">
+            <h2 class="card-title">📅 Calendar</h2>
+            <div class="calendar-month-nav">
               <button id="prev-month-btn">◀</button>
-              <span id="current-month" style="margin: 0 1rem; font-weight: 700;"></span>
+              <span id="current-month"></span>
               <button id="next-month-btn">▶</button>
             </div>
           </div>
           <div class="calendar-header">
-            <div class="calendar-day-name">Sun</div>
-            <div class="calendar-day-name">Mon</div>
-            <div class="calendar-day-name">Tue</div>
-            <div class="calendar-day-name">Wed</div>
-            <div class="calendar-day-name">Thu</div>
-            <div class="calendar-day-name">Fri</div>
-            <div class="calendar-day-name">Sat</div>
+            <div class="calendar-day-name">Su</div>
+            <div class="calendar-day-name">Mo</div>
+            <div class="calendar-day-name">Tu</div>
+            <div class="calendar-day-name">We</div>
+            <div class="calendar-day-name">Th</div>
+            <div class="calendar-day-name">Fr</div>
+            <div class="calendar-day-name">Sa</div>
           </div>
           <div id="calendar" class="calendar"></div>
         </div>
-      </div>
 
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">🏆 Leaderboard</h2>
-        </div>
-        <div id="leaderboard" class="leaderboard-list"></div>
-      </div>
-
-      <div class="card" style="grid-column: 1 / 3;">
-        <div class="card-header">
-          <h2 class="card-title">📊 Performance Trend</h2>
-        </div>
-        <div class="chart-container">
-          <canvas id="chart"></canvas>
-        </div>
-      </div>
-
-      <div class="card" style="grid-column: 1 / 3;">
-        <div class="card-header">
-          <h2 class="card-title">📝 Recent Sessions</h2>
-        </div>
-        <div class="sessions-table-wrapper">
-          <table class="sessions-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Mode</th>
-                <th>Duration</th>
-                <th>Score</th>
-                <th>Normalized</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="sessions-body"></tbody>
-          </table>
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🏆 Leaderboard</h2>
+          </div>
+          <div id="leaderboard" class="leaderboard-list"></div>
         </div>
       </div>
     </div>
@@ -801,11 +149,8 @@
           <thead>
             <tr>
               <th>#</th>
-              <th>Question</th>
-              <th>Operator</th>
-              <th>Answer</th>
+              <th>Problem</th>
               <th>Time (s)</th>
-              <th>Game Time (s)</th>
             </tr>
           </thead>
           <tbody id="modal-problems"></tbody>
