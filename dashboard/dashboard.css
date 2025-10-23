@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zetamac Analytics Pro</title>
+  <link rel="stylesheet" href="dashboard-styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🧮 Zetamac Analytics Pro</h1>
+      <p>Advanced Performance Tracking & Analysis</p>
+      <div class="sync-status">
+        <span class="sync-indicator"></span>
+        <span id="sync-text">Synced with Google Sheets</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="filters">
+        <div class="filter-group">
+          <label for="mode-filter">Mode:</label>
+          <select id="mode-filter">
+            <option value="all">All</option>
+            <option value="Normal">Normal</option>
+            <option value="Hard">Hard</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="duration-filter">Duration:</label>
+          <select id="duration-filter">
+            <option value="all">All</option>
+            <option value="30">30s</option>
+            <option value="60">60s</option>
+            <option value="120">2 min</option>
+            <option value="300">5 min</option>
+            <option value="600">10 min</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary" id="refresh-btn">🔄 Refresh Data</button>
+    </div>
+
+    <div id="stats" class="stats-grid"></div>
+
+    <div class="main-grid">
+      <div class="left-column">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">📊 Performance Trend</h2>
+          </div>
+          <div class="chart-container">
+            <canvas id="chart"></canvas>
+            <div class="chart-tooltip" id="chart-tooltip">
+              <div class="chart-tooltip-date" id="tooltip-date"></div>
+              <div class="chart-tooltip-score" id="tooltip-score"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">📝 Recent Sessions</h2>
+          </div>
+          <div class="sessions-table-wrapper">
+            <table class="sessions-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Mode</th>
+                  <th>Duration</th>
+                  <th>Score</th>
+                  <th>Normalized</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sessions-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-sidebar">
+        <div class="calendar-compact">
+          <div class="card-header">
+            <h2 class="card-title">📅 Calendar</h2>
+            <div class="calendar-month-nav">
+              <button id="prev-month-btn">◀</button>
+              <span id="current-month"></span>
+              <button id="next-month-btn">▶</button>
+            </div>
+          </div>
+          <div class="calendar-header">
+            <div class="calendar-day-name">Su</div>
+            <div class="calendar-day-name">Mo</div>
+            <div class="calendar-day-name">Tu</div>
+            <div class="calendar-day-name">We</div>
+            <div class="calendar-day-name">Th</div>
+            <div class="calendar-day-name">Fr</div>
+            <div class="calendar-day-name">Sa</div>
+          </div>
+          <div id="calendar" class="calendar"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">🏆 Leaderboard</h2>
+          </div>
+          <div id="leaderboard" class="leaderboard-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="day-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" id="day-modal-title"></div>
+        <button class="modal-close" id="close-day-modal-btn">Close</button>
+      </div>
+      <div class="sessions-table-wrapper">
+        <table class="sessions-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Mode</th>
+              <th>Duration</th>
+              <th>Score</th>
+              <th>Normalized</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="day-sessions-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="details-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" id="modal-title"></div>
+        <button class="modal-close" id="close-modal-btn">Close</button>
+      </div>
+      <div id="modal-stats" class="stats-grid"></div>
+      <div class="sessions-table-wrapper">
+        <table class="sessions-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Problem</th>
+              <th>Time (s)</th>
+            </tr>
+          </thead>
+          <tbody id="modal-problems"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
