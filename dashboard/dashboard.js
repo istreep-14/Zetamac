@@ -1,19 +1,10 @@
-// dashboard_pro.js - Enhanced with Google Sheets sync
+// dashboard.js - Fixed with better CORS and error handling
 
-// Configuration
-const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyjxIIqmqWcPeFZ5G_m9ZGetPVlsDf28kYFN4__6yRPFZQw4a73EZjNsYNq2GSWooPi/exec'; // Replace with your deployed script URL
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyjxIIqmqWcPeFZ5G_m9ZGetPVlsDf28kYFN4__6yRPFZQw4a73EZjNsYNq2GSWooPi/exec';
 
 let allSessions = [];
 let filteredSessions = [];
 let currentMonth = new Date();
-let chartInstance = null;
-
-const opColors = {
-  addition: '#82b1ff',
-  subtraction: '#ffaa00',
-  multiplication: '#69f0ae',
-  division: '#b388ff'
-};
 
 const opIcons = {
   addition: '+',
@@ -26,103 +17,132 @@ const opIcons = {
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('Dashboard loading...');
   await loadData();
-  updateDashboard();
   
   document.getElementById('mode-filter').addEventListener('change', applyFilters);
   document.getElementById('duration-filter').addEventListener('change', applyFilters);
 });
 
-// Data Loading
+// Data Loading - ONLY from Google Sheets
 async function loadData() {
   const syncText = document.getElementById('sync-text');
-  syncText.textContent = 'Loading...';
+  syncText.textContent = 'Loading from Google Sheets...';
   
   try {
-    // Try to load from Google Sheets first
-    if (GOOGLE_SHEETS_URL !== 'YOUR_GOOGLE_SCRIPT_URL_HERE') {
-      const response = await fetch(`${GOOGLE_SHEETS_URL}?action=getSessions`, {
-        method: 'GET'
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.sessions) {
-          allSessions = data.sessions.map(s => convertSheetSession(s));
-          console.log(`Loaded ${allSessions.length} sessions from Google Sheets`);
-          syncText.textContent = 'Synced with Google Sheets';
-          filteredSessions = [...allSessions];
-          return;
-        }
+    console.log('Fetching sessions from Google Sheets...');
+    console.log('URL:', `${GOOGLE_SHEETS_URL}?action=getSessions`);
+    
+    const response = await fetch(`${GOOGLE_SHEETS_URL}?action=getSessions`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
       }
+    });
+    
+    console.log('Response status:', response.status);
+    console.log('Response ok:', response.ok);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const text = await response.text();
+    console.log('Response text:', text.substring(0, 200));
+    
+    const data = JSON.parse(text);
+    console.log('Parsed data:', data);
+    
+    if (data.success && data.sessions) {
+      allSessions = data.sessions.map(s => convertSheetSession(s));
+      console.log(`✅ Loaded ${allSessions.length} sessions from Google Sheets`);
+      syncText.textContent = `✅ Synced (${allSessions.length} sessions)`;
+      syncText.style.color = '#00ff88';
+      filteredSessions = [...allSessions];
+      updateDashboard();
+    } else {
+      throw new Error('Invalid response from Google Sheets: ' + JSON.stringify(data));
     }
   } catch (error) {
-    console.log('Could not load from Google Sheets, using local storage:', error);
+    console.error('❌ Error loading from Google Sheets:', error);
+    syncText.textContent = '❌ Error loading data';
+    syncText.style.color = '#ff4444';
+    
+    // Show detailed error message
+    document.getElementById('stats').innerHTML = `
+      <div style="grid-column: 1/-1; padding: 2rem; text-align: center; color: var(--text-secondary); background: var(--bg-card); border-radius: 1rem; border: 1px solid var(--danger);">
+        <h3 style="color: var(--danger); margin-bottom: 1rem;">⚠️ Unable to load data</h3>
+        <p style="margin-bottom: 1rem;">Could not connect to Google Sheets.</p>
+        <div style="background: var(--bg-darker); padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; font-family: monospace; font-size: 0.85rem; text-align: left;">
+          <strong>Error:</strong> ${error.message}<br><br>
+          <strong>URL:</strong> ${GOOGLE_SHEETS_URL}
+        </div>
+        <div style="text-align: left; margin-top: 1rem; font-size: 0.9rem;">
+          <strong>Troubleshooting steps:</strong>
+          <ol style="margin-top: 0.5rem; margin-left: 1.5rem;">
+            <li>Make sure your Google Apps Script is deployed as a Web App</li>
+            <li>Set "Execute as: Me" and "Who has access: Anyone"</li>
+            <li>Copy the Web App URL and update it in dashboard.js</li>
+            <li>Open the URL in a new tab to test if it works: <a href="${GOOGLE_SHEETS_URL}?action=getSessions" target="_blank" style="color: var(--accent);">Test Link</a></li>
+          </ol>
+        </div>
+        <button onclick="refreshData()" style="margin-top: 1.5rem; padding: 0.75rem 1.5rem; background: var(--accent); color: var(--bg-dark); border: none; border-radius: 0.5rem; cursor: pointer; font-weight: 700;">
+          🔄 Retry
+        </button>
+      </div>
+    `;
   }
-  
-  // Fallback to local storage
-  chrome.storage.local.get(['gameSessions'], (result) => {
-    allSessions = result.gameSessions || [];
-    console.log(`Loaded ${allSessions.length} sessions from local storage`);
-    syncText.textContent = 'Using Local Data';
-    filteredSessions = [...allSessions];
-    updateDashboard();
-  });
 }
 
 function convertSheetSession(sheetData) {
   // Convert Google Sheets format to our format
+  const duration = sheetData.duration || 120;
+  const scorePerSecond = sheetData.score / duration;
+  const normalized120 = scorePerSecond * 120;
+  
   return {
+    id: sheetData.id,
     timestamp: sheetData.timestamp,
+    date: sheetData.date,
+    time: sheetData.time,
     score: sheetData.score,
-    scorePerSecond: sheetData.scorePerSecond,
-    normalized120: sheetData.normalized120,
+    scorePerSecond: scorePerSecond,
+    normalized120: normalized120,
     key: sheetData.key,
     mode: sheetData.mode,
-    duration: sheetData.duration,
-    problemsCount: sheetData.problemsCount,
-    avgLatency: sheetData.avgLatency,
-    operations: {
-      addition: sheetData.addition || 0,
-      subtraction: sheetData.subtraction || 0,
-      multiplication: sheetData.multiplication || 0,
-      division: sheetData.division || 0
-    }
+    duration: duration,
+    fullTimestamp: sheetData.fullTimestamp
   };
 }
 
 async function refreshData() {
+  console.log('🔄 Refreshing data...');
   await loadData();
   applyFilters();
 }
 
-async function deleteSession(timestamp) {
+async function deleteSession(sessionId) {
   if (!confirm('Are you sure you want to delete this session?')) {
     return;
   }
   
   try {
-    // Delete from Google Sheets if configured
-    if (GOOGLE_SHEETS_URL !== 'YOUR_GOOGLE_SCRIPT_URL_HERE') {
-      const response = await fetch(`${GOOGLE_SHEETS_URL}?action=deleteSession&timestamp=${encodeURIComponent(timestamp)}`, {
-        method: 'GET'
-      });
-      
-      if (response.ok) {
-        console.log('Session deleted from Google Sheets');
-      }
+    console.log('🗑️ Deleting session:', sessionId);
+    const response = await fetch(`${GOOGLE_SHEETS_URL}?action=deleteSession&id=${encodeURIComponent(sessionId)}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    // Also delete from local storage
-    chrome.storage.local.get(['gameSessions'], (result) => {
-      const sessions = result.gameSessions || [];
-      const updated = sessions.filter(s => s.timestamp !== timestamp);
-      chrome.storage.local.set({ gameSessions: updated });
-    });
+    const data = await response.json();
     
-    await refreshData();
+    if (data.success) {
+      console.log('✅ Session deleted successfully');
+      await refreshData();
+    } else {
+      throw new Error(data.message || 'Failed to delete session');
+    }
   } catch (error) {
-    console.error('Error deleting session:', error);
-    alert('Error deleting session');
+    console.error('❌ Error deleting session:', error);
+    alert('Error deleting session: ' + error.message);
   }
 }
 
@@ -154,7 +174,12 @@ function updateStats() {
   const container = document.getElementById('stats');
   
   if (filteredSessions.length === 0) {
-    container.innerHTML = '<div class="loading">No sessions recorded yet</div>';
+    container.innerHTML = `
+      <div style="grid-column: 1/-1; padding: 2rem; text-align: center; color: var(--text-secondary);">
+        <p style="font-size: 1.2rem; margin-bottom: 1rem;">No sessions recorded yet</p>
+        <p style="font-size: 0.9rem;">Play a game on Zetamac to see your stats here!</p>
+      </div>
+    `;
     return;
   }
 
@@ -167,11 +192,7 @@ function updateStats() {
   const avgNorm = (normalized.reduce((a, b) => a + b, 0) / normalized.length).toFixed(1);
   
   // Calculate total problems
-  const totalProblems = filteredSessions.reduce((sum, s) => {
-    if (s.problemsCount) return sum + s.problemsCount;
-    if (s.problems) return sum + s.problems.length;
-    return sum + s.score;
-  }, 0);
+  const totalProblems = filteredSessions.reduce((sum, s) => sum + s.score, 0);
 
   container.innerHTML = `
     <div class="stat-card">
@@ -295,22 +316,17 @@ window.showDayDetails = function(day) {
   
   title.textContent = `Sessions on ${dateStr}`;
   
-  tbody.innerHTML = daySessions.map((session, index) => {
-    const time = new Date(session.timestamp).toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit' 
-    });
-    
+  tbody.innerHTML = daySessions.map((session) => {
     return `
       <tr>
-        <td>${time}</td>
+        <td>${session.time}</td>
         <td><span class="badge badge-${session.mode.toLowerCase()}">${session.mode}</span></td>
         <td><span class="badge badge-duration">${formatDuration(session.duration)}</span></td>
         <td><span class="score-display">${session.score}</span></td>
         <td>${(session.normalized120 || session.score).toFixed(1)}</td>
         <td>
-          <button class="btn-details" onclick="showSessionDetails('${session.timestamp}')">Details</button>
-          <button class="btn-delete" onclick="deleteSession('${session.timestamp}')">×</button>
+          <button class="btn-details" onclick="showSessionDetails('${session.id}')">Details</button>
+          <button class="btn-delete" onclick="deleteSession('${session.id}'); closeDayModal();">×</button>
         </td>
       </tr>
     `;
@@ -345,13 +361,8 @@ function updateLeaderboard() {
     else if (rank === 2) rankClass = 'silver';
     else if (rank === 3) rankClass = 'bronze';
     
-    const date = new Date(session.timestamp).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric' 
-    });
-    
     return `
-      <div class="leaderboard-item" onclick="showSessionDetails('${session.timestamp}')">
+      <div class="leaderboard-item" onclick="showSessionDetails('${session.id}')">
         <div class="leaderboard-rank ${rankClass}">#${rank}</div>
         <div class="leaderboard-info">
           <div class="leaderboard-score">${session.displayScore.toFixed(1)}</div>
@@ -359,7 +370,7 @@ function updateLeaderboard() {
             ${session.mode} • ${formatDuration(session.duration)} • Raw: ${session.score}
           </div>
         </div>
-        <div class="leaderboard-date">${date}</div>
+        <div class="leaderboard-date">${session.date}</div>
       </div>
     `;
   }).join('');
@@ -482,25 +493,23 @@ function updateSessionsTable() {
   const tbody = document.getElementById('sessions-body');
   
   if (filteredSessions.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="loading">No sessions yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No sessions yet - play a game to see it here!</td></tr>';
     return;
   }
 
   const recentSessions = filteredSessions.slice(-20).reverse();
   
   tbody.innerHTML = recentSessions.map((session) => {
-    const date = formatDateTime(session.timestamp);
-    
     return `
       <tr>
-        <td>${date}</td>
+        <td>${session.date} ${session.time}</td>
         <td><span class="badge badge-${session.mode.toLowerCase()}">${session.mode}</span></td>
         <td><span class="badge badge-duration">${formatDuration(session.duration)}</span></td>
         <td><span class="score-display">${session.score}</span></td>
         <td>${(session.normalized120 || session.score).toFixed(1)}</td>
         <td>
-          <button class="btn-details" onclick="showSessionDetails('${session.timestamp}')">Details</button>
-          <button class="btn-delete" onclick="deleteSession('${session.timestamp}')">×</button>
+          <button class="btn-details" onclick="showSessionDetails('${session.id}')">Details</button>
+          <button class="btn-delete" onclick="deleteSession('${session.id}')">×</button>
         </td>
       </tr>
     `;
@@ -508,8 +517,8 @@ function updateSessionsTable() {
 }
 
 // Session Details Modal
-window.showSessionDetails = async function(timestamp) {
-  const session = allSessions.find(s => s.timestamp === timestamp);
+window.showSessionDetails = async function(sessionId) {
+  const session = allSessions.find(s => s.id === sessionId);
   if (!session) return;
   
   const modal = document.getElementById('details-modal');
@@ -517,15 +526,9 @@ window.showSessionDetails = async function(timestamp) {
   const stats = document.getElementById('modal-stats');
   const problemsBody = document.getElementById('modal-problems');
   
-  title.textContent = `Session Details - ${formatDateTime(session.timestamp)}`;
+  title.textContent = `Session Details - ${session.date} ${session.time}`;
   
   // Stats
-  const problemsCount = session.problemsCount || (session.problems ? session.problems.length : session.score);
-  const avgLatency = session.avgLatency || 0;
-  const totalLatency = session.problems 
-    ? (session.problems.reduce((sum, p) => sum + (p.latency || 0), 0) / 1000).toFixed(2)
-    : 0;
-  
   stats.innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Score</div>
@@ -540,52 +543,47 @@ window.showSessionDetails = async function(timestamp) {
       <div class="stat-value">${formatDuration(session.duration)}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Problems</div>
-      <div class="stat-value">${problemsCount}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Avg Time</div>
-      <div class="stat-value">${avgLatency}s</div>
+      <div class="stat-label">Mode</div>
+      <div class="stat-value" style="font-size: 1.5rem;">${session.mode}</div>
     </div>
   `;
   
-  // Try to load problems from Google Sheets if not in session
-  let problems = session.problems;
+  // Load problems from Google Sheets
+  problemsBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">Loading problems...</td></tr>';
   
-  if (!problems && GOOGLE_SHEETS_URL !== 'YOUR_GOOGLE_SCRIPT_URL_HERE') {
-    try {
-      const response = await fetch(`${GOOGLE_SHEETS_URL}?action=getProblems&timestamp=${encodeURIComponent(timestamp)}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          problems = data.problems;
-        }
-      }
-    } catch (error) {
-      console.error('Error loading problems:', error);
+  try {
+    const response = await fetch(`${GOOGLE_SHEETS_URL}?action=getProblems&id=${encodeURIComponent(sessionId)}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  }
-  
-  if (problems && problems.length > 0) {
-    problemsBody.innerHTML = problems.map((problem, idx) => {
-      const operatorDisplay = problem.operator || opIcons[problem.operationType] || '?';
-      const timeDisplay = problem.latency > 0 ? (problem.latency / 1000).toFixed(2) : '0.00';
-      const gameTimeDisplay = problem.gameTime !== undefined ? problem.gameTime.toFixed(2) : 
-                            (problem.timestamp !== undefined ? problem.timestamp.toFixed(2) : '-');
+    
+    const data = await response.json();
+    
+    if (data.success && data.problems && data.problems.length > 0) {
+      const problems = data.problems;
       
-      return `
-        <tr>
-          <td>${idx + 1}</td>
-          <td>${problem.question || `${problem.a} ${operatorDisplay} ${problem.b}`}</td>
-          <td style="text-align: center; font-size: 1.25rem; font-weight: bold;">${operatorDisplay}</td>
-          <td>${problem.answer || problem.c || '-'}</td>
-          <td>${timeDisplay}</td>
-          <td>${gameTimeDisplay}</td>
-        </tr>
-      `;
-    }).join('');
-  } else {
-    problemsBody.innerHTML = '<tr><td colspan="6" class="loading">No problem data available</td></tr>';
+      problemsBody.innerHTML = problems.map((problem) => {
+        const operatorDisplay = opIcons[problem.operationType] || '?';
+        const timeDisplay = problem.latency > 0 ? (problem.latency / 1000).toFixed(2) : '0.00';
+        
+        return `
+          <tr>
+            <td>${problem.problemNum}</td>
+            <td>${problem.question}</td>
+            <td style="text-align: center; font-size: 1.25rem; font-weight: bold;">${operatorDisplay}</td>
+            <td>${problem.c}</td>
+            <td>${timeDisplay}</td>
+            <td>-</td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      problemsBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No problem data available for this session</td></tr>';
+    }
+  } catch (error) {
+    console.error('Error loading problems:', error);
+    problemsBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--danger);">Error loading problems: ${error.message}</td></tr>`;
   }
   
   modal.classList.add('show');
@@ -596,22 +594,6 @@ window.closeModal = function() {
 };
 
 // Utility Functions
-function formatDateTime(timestamp) {
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diffMs = now - date;
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-  
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 function formatDuration(seconds) {
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m`;
@@ -631,4 +613,4 @@ window.addEventListener('resize', () => {
   }
 });
 
-console.log('Dashboard Pro script loaded');
+console.log('✅ Dashboard script loaded');
