@@ -426,6 +426,12 @@ function handleLeaderboardClick(e) {
 // Interactive Chart
 function initializeChart() {
   chartData.canvas = document.getElementById('chart');
+  
+  if (!chartData.canvas) {
+    console.error('Chart canvas not found');
+    return;
+  }
+  
   chartData.ctx = chartData.canvas.getContext('2d');
   
   // Mouse events for interactivity
@@ -442,6 +448,11 @@ function initializeChart() {
 function updateChart() {
   const canvas = chartData.canvas;
   const ctx = chartData.ctx;
+  
+  if (!canvas || !ctx) {
+    console.error('Chart not initialized properly');
+    return;
+  }
   
   canvas.width = canvas.offsetWidth;
   canvas.height = 280;
@@ -565,6 +576,8 @@ function updateChart() {
 }
 
 function handleChartHover(e) {
+  if (!chartData.canvas) return;
+  
   const rect = chartData.canvas.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
