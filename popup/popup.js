@@ -107,8 +107,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dashboardBtn) {
     console.log("Setting up dashboard button");
     dashboardBtn.addEventListener('click', () => {
-      console.log("Opening dashboard");
-      chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
+     chrome.tabs.create({ 
+       url: chrome.runtime.getURL('dashboard/dashboard_pro.html') 
+     });
+   });
     });
   }
 
