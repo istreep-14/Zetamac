@@ -125,6 +125,7 @@ body::before {
 .filters {
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .filter-group {
@@ -232,6 +233,51 @@ select:focus, button:focus {
   border-radius: 2px;
 }
 
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  transition: all 0.3s;
+}
+
+.stat-card:hover {
+  border-color: var(--border-bright);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+  transform: translateY(-4px);
+}
+
+.stat-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.75rem;
+}
+
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.stat-subvalue {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
 /* Compact Calendar */
 .calendar-compact {
   background: var(--bg-card);
@@ -306,7 +352,8 @@ select:focus, button:focus {
   transition: all 0.2s;
   position: relative;
   padding: 0.25rem;
-  font-size: 0.75rem;
+  min-height: 50px;
+  width: 100%;
 }
 
 .calendar-day:hover {
@@ -353,6 +400,71 @@ select:focus, button:focus {
 .day-score.average { color: var(--warning); }
 .day-score.poor { color: var(--danger); }
 
+/* Chart Container */
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 400px;
+  background: var(--bg-darker);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.chart-controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.chart-controls label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.chart-controls select {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.chart-tooltip {
+  position: fixed;
+  background: var(--bg-card);
+  border: 2px solid var(--accent);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.chart-tooltip.show {
+  opacity: 1;
+}
+
+.chart-tooltip-date {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.chart-tooltip-score {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* Leaderboard */
 .leaderboard-list {
   display: flex;
   flex-direction: column;
@@ -375,42 +487,22 @@ select:focus, button:focus {
 
 .leaderboard-item:hover {
   border-color: var(--accent);
-  transform: translateX(5px);
-}
-
-.leaderboard-item:nth-child(even) {
-  background: var(--bg-card);
+  transform: translateY(-2px);
 }
 
 .leaderboard-rank {
   font-size: 1.5rem;
   font-weight: 900;
-  width: 40px;
+  color: var(--accent);
+  min-width: 50px;
   text-align: center;
-  background: linear-gradient(135deg, var(--accent), var(--purple));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
-.leaderboard-rank.gold { 
-  background: linear-gradient(135deg, #ffd700, #ffed4e);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+.leaderboard-rank.gold { color: #ffd700; }
+.leaderboard-rank.silver { color: #c0c0c0; }
+.leaderboard-rank.bronze { color: #cd7f32; }
 
-.leaderboard-rank.silver { 
-  background: linear-gradient(135deg, #c0c0c0, #e8e8e8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.leaderboard-rank.bronze { 
-  background: linear-gradient(135deg, #cd7f32, #e8a87c);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.leaderboard-info {
+.leaderboard-details {
   flex: 1;
 }
 
@@ -418,113 +510,26 @@ select:focus, button:focus {
   font-size: 1.3rem;
   font-weight: 900;
   color: var(--text-primary);
-}
-
-.leaderboard-details {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  margin-top: 0.25rem;
-}
-
-.leaderboard-date {
-  color: var(--text-dim);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.stat-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  padding: 1.5rem;
-  text-align: center;
-  transition: all 0.3s;
-}
-
-.stat-card:hover {
-  border-color: var(--border-bright);
-  transform: translateY(-5px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-}
-
-.stat-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 800;
-  margin-bottom: 0.75rem;
-}
-
-.stat-value {
-  font-size: 2.5rem;
-  font-weight: 900;
-  color: var(--accent);
-  line-height: 1;
-}
-
-.stat-subvalue {
-  font-size: 1rem;
-  color: var(--purple);
-  font-weight: 700;
-  margin-top: 0.5rem;
-}
-
-.chart-container {
-  width: 100%;
-  height: 300px;
-  position: relative;
-  background: var(--bg-darker);
-  border-radius: 0.75rem;
-  padding: 1rem;
-}
-
-canvas {
-  max-width: 100%;
-  cursor: crosshair;
-}
-
-.chart-tooltip {
-  position: absolute;
-  background: var(--bg-card);
-  border: 2px solid var(--accent);
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s;
-  z-index: 100;
-  font-size: 0.85rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-}
-
-.chart-tooltip.show {
-  opacity: 1;
-}
-
-.chart-tooltip-date {
-  font-weight: 700;
-  color: var(--accent);
   margin-bottom: 0.25rem;
 }
 
-.chart-tooltip-score {
-  color: var(--text-primary);
-  font-weight: 600;
+.leaderboard-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
 }
 
+.leaderboard-session-id {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-top: 0.25rem;
+}
+
+/* Sessions Table */
 .sessions-table-wrapper {
-  max-height: 600px;
-  overflow-y: auto;
+  overflow-x: auto;
   border-radius: 0.75rem;
   border: 1px solid var(--border);
+  background: var(--bg-darker);
 }
 
 .sessions-table {
@@ -532,35 +537,28 @@ canvas {
   border-collapse: collapse;
 }
 
-.sessions-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: var(--bg-dark);
-}
-
 .sessions-table th {
-  padding: 1rem;
-  text-align: left;
-  font-weight: 800;
+  background: var(--bg-card);
   color: var(--text-secondary);
+  font-weight: 800;
   text-transform: uppercase;
-  font-size: 0.75rem;
   letter-spacing: 0.5px;
+  padding: 1.2rem 1rem;
+  text-align: left;
+  font-size: 0.9rem;
   border-bottom: 2px solid var(--border);
 }
 
 .sessions-table td {
-  padding: 1rem;
+  padding: 1.2rem 1rem;
   border-bottom: 1px solid var(--border);
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 
 .sessions-table tbody tr {
-  background: var(--bg-card);
+  cursor: pointer;
   transition: all 0.2s;
-}
-
-.sessions-table tbody tr:nth-child(even) {
   background: var(--bg-darker);
 }
 
@@ -573,7 +571,7 @@ canvas {
   display: inline-block;
   padding: 0.35rem 0.75rem;
   border-radius: 0.5rem;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -584,7 +582,7 @@ canvas {
 .badge-duration { background: var(--purple); color: white; }
 
 .score-display {
-  font-size: 1.3rem;
+  font-size: 1.4rem;
   font-weight: 900;
   color: var(--accent);
 }
@@ -628,37 +626,6 @@ canvas {
   background: var(--accent);
   font-weight: 800;
   color: var(--bg-dark);
-}
-
-.btn-details, .btn-delete {
-  padding: 0.4rem 0.9rem;
-  font-size: 0.8rem;
-  border-radius: 0.4rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.btn-details {
-  background: var(--accent);
-  color: var(--bg-dark);
-  border: none;
-}
-
-.btn-details:hover {
-  background: var(--accent-dim);
-}
-
-.btn-delete {
-  background: transparent;
-  border: 1px solid var(--danger);
-  color: var(--danger);
-  margin-left: 0.5rem;
-}
-
-.btn-delete:hover {
-  background: var(--danger);
-  color: white;
 }
 
 .modal {
@@ -720,7 +687,27 @@ canvas {
   color: var(--text-primary);
 }
 
+.modal-actions {
+  display: flex;
+  gap: 1rem;
+}
+
 .modal-close {
+  background: var(--accent);
+  color: var(--bg-dark);
+  border: none;
+  padding: 0.65rem 1.5rem;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.modal-close:hover {
+  background: var(--accent-dim);
+}
+
+.btn-delete-modal {
   background: var(--danger);
   color: white;
   border: none;
@@ -728,7 +715,13 @@ canvas {
   border-radius: 0.75rem;
   cursor: pointer;
   font-weight: 800;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-delete-modal:hover {
+  background: #ff6666;
 }
 
 .loading {
@@ -825,6 +818,16 @@ canvas {
         <div class="card">
           <div class="card-header">
             <h2 class="card-title">📊 Performance Trend</h2>
+            <div class="chart-controls">
+              <label for="chart-range">Show last:</label>
+              <select id="chart-range">
+                <option value="10">10 games</option>
+                <option value="20" selected>20 games</option>
+                <option value="30">30 games</option>
+                <option value="50">50 games</option>
+                <option value="all">All games</option>
+              </select>
+            </div>
           </div>
           <div class="chart-container">
             <canvas id="chart"></canvas>
@@ -844,11 +847,11 @@ canvas {
               <thead>
                 <tr>
                   <th>Date</th>
+                  <th>Time</th>
                   <th>Mode</th>
                   <th>Duration</th>
                   <th>Score</th>
                   <th>Normalized</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="sessions-body"></tbody>
@@ -904,7 +907,6 @@ canvas {
               <th>Duration</th>
               <th>Score</th>
               <th>Normalized</th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="day-sessions-body"></tbody>
@@ -917,7 +919,13 @@ canvas {
     <div class="modal-content">
       <div class="modal-header">
         <div class="modal-title" id="modal-title"></div>
-        <button class="modal-close" id="close-modal-btn">Close</button>
+        <div class="modal-actions">
+          <button class="btn-delete-modal" id="delete-session-btn">
+            <span>🗑️</span>
+            <span>Delete Session</span>
+          </button>
+          <button class="modal-close" id="close-modal-btn">Close</button>
+        </div>
       </div>
       <div id="modal-stats" class="stats-grid"></div>
       <div class="sessions-table-wrapper">
