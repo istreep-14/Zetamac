@@ -1,11 +1,16 @@
-// dashboard.js - Enhanced with batch loading, better formatting, and interactive chart
+// dashboard.js - Enhanced with IndexedDB caching, better formatting, and improved UX
 
 const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyjxIIqmqWcPeFZ5G_m9ZGetPVlsDf28kYFN4__6yRPFZQw4a73EZjNsYNq2GSWooPi/exec';
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const DB_NAME = 'ZetamacAnalyticsDB';
+const DB_VERSION = 1;
 
 let allSessions = [];
 let filteredSessions = [];
 let allProblems = {}; // Cache for problems
 let currentMonth = new Date();
+let db = null;
+let currentSessionId = null; // Track which session is open in modal
 
 const opIcons = {
   addition: '+',
@@ -29,14 +34,122 @@ let chartData = {
   hoveredIndex: null
 };
 
+// IndexedDB Setup
+async function initDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      
+      // Create object stores
+      if (!db.objectStoreNames.contains('sessions')) {
+        db.createObjectStore('sessions', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('problems')) {
+        db.createObjectStore('problems', { keyPath: 'sessionId' });
+      }
+      if (!db.objectStoreNames.contains('metadata')) {
+        db.createObjectStore('metadata', { keyPath: 'key' });
+      }
+    };
+  });
+}
+
+async function getCachedData() {
+  if (!db) return null;
+  
+  return new Promise((resolve) => {
+    try {
+      const transaction = db.transaction(['sessions', 'problems', 'metadata'], 'readonly');
+      const sessionsStore = transaction.objectStore('sessions');
+      const problemsStore = transaction.objectStore('problems');
+      const metadataStore = transaction.objectStore('metadata');
+      
+      const metadataRequest = metadataStore.get('lastFetch');
+      metadataRequest.onsuccess = () => {
+        const metadata = metadataRequest.result;
+        if (!metadata || Date.now() - metadata.timestamp > CACHE_DURATION) {
+          resolve(null);
+          return;
+        }
+        
+        const sessionsRequest = sessionsStore.getAll();
+        const problemsRequest = problemsStore.getAll();
+        
+        Promise.all([
+          new Promise(r => { sessionsRequest.onsuccess = () => r(sessionsRequest.result); }),
+          new Promise(r => { problemsRequest.onsuccess = () => r(problemsRequest.result); })
+        ]).then(([sessions, problemSets]) => {
+          const problemsMap = {};
+          problemSets.forEach(ps => {
+            problemsMap[ps.sessionId] = ps.problems;
+          });
+          resolve({ sessions, problems: problemsMap });
+        });
+      };
+      metadataRequest.onerror = () => resolve(null);
+    } catch (error) {
+      console.error('Error getting cached data:', error);
+      resolve(null);
+    }
+  });
+}
+
+async function saveCachedData(sessions, problems) {
+  if (!db) return;
+  
+  try {
+    const transaction = db.transaction(['sessions', 'problems', 'metadata'], 'readwrite');
+    const sessionsStore = transaction.objectStore('sessions');
+    const problemsStore = transaction.objectStore('problems');
+    const metadataStore = transaction.objectStore('metadata');
+    
+    // Clear old data
+    sessionsStore.clear();
+    problemsStore.clear();
+    
+    // Save sessions
+    sessions.forEach(session => sessionsStore.put(session));
+    
+    // Save problems
+    Object.entries(problems).forEach(([sessionId, problemList]) => {
+      problemsStore.put({ sessionId, problems: problemList });
+    });
+    
+    // Save metadata
+    metadataStore.put({ key: 'lastFetch', timestamp: Date.now() });
+    
+    console.log('✅ Data cached successfully');
+  } catch (error) {
+    console.error('Error caching data:', error);
+  }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('Dashboard loading...');
+  
+  // Initialize IndexedDB
+  try {
+    await initDB();
+    console.log('✅ IndexedDB initialized');
+  } catch (error) {
+    console.error('IndexedDB initialization failed:', error);
+  }
+  
   await loadData();
   
   // Filter listeners
   document.getElementById('mode-filter').addEventListener('change', applyFilters);
   document.getElementById('duration-filter').addEventListener('change', applyFilters);
+  document.getElementById('chart-range').addEventListener('change', updateChart);
   
   // Button listeners
   document.getElementById('refresh-btn').addEventListener('click', refreshData);
@@ -44,16 +157,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('next-month-btn').addEventListener('click', nextMonth);
   document.getElementById('close-day-modal-btn').addEventListener('click', closeDayModal);
   document.getElementById('close-modal-btn').addEventListener('click', closeModal);
+  document.getElementById('delete-session-btn').addEventListener('click', () => {
+    if (currentSessionId) {
+      deleteSession(currentSessionId);
+    }
+  });
   
   // Initialize chart
   initializeChart();
+  
+  // Periodic refresh every 5 minutes
+  setInterval(async () => {
+    console.log('⏰ Periodic refresh...');
+    await loadData(true);
+  }, CACHE_DURATION);
 });
 
 // Format date nicely
 function formatDate(timestamp) {
   const date = new Date(timestamp);
-  const options = { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true };
-  return date.toLocaleDateString('en-US', options);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatTimeOnly(timestamp) {
@@ -61,13 +184,39 @@ function formatTimeOnly(timestamp) {
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
-// Data Loading with batch fetch
-async function loadData() {
+// Data Loading with caching
+async function loadData(skipCache = false) {
+  const syncText = document.getElementById('sync-text');
+  
+  // Try to load from cache first
+  if (!skipCache) {
+    const cached = await getCachedData();
+    if (cached) {
+      console.log('📦 Loading from cache...');
+      syncText.textContent = '📦 Loading from cache...';
+      allSessions = cached.sessions.map(s => convertSheetSession(s));
+      allProblems = cached.problems;
+      syncText.textContent = `✅ Cached (${allSessions.length} sessions)`;
+      syncText.style.color = '#00ff88';
+      filteredSessions = [...allSessions];
+      updateDashboard();
+      
+      // Fetch fresh data in background
+      fetchFreshData();
+      return;
+    }
+  }
+  
+  // Fetch fresh data
+  await fetchFreshData();
+}
+
+async function fetchFreshData() {
   const syncText = document.getElementById('sync-text');
   syncText.textContent = 'Loading from Google Sheets...';
   
   try {
-    console.log('Fetching all data from Google Sheets...');
+    console.log('Fetching fresh data from Google Sheets...');
     const response = await fetch(`${GOOGLE_SHEETS_URL}?action=getAllData`, {
       method: 'GET',
       headers: { 'Accept': 'application/json' }
@@ -83,6 +232,9 @@ async function loadData() {
     if (data.success && data.sessions) {
       allSessions = data.sessions.map(s => convertSheetSession(s));
       allProblems = data.problemsBySession || {};
+      
+      // Save to cache
+      await saveCachedData(data.sessions, allProblems);
       
       console.log(`✅ Loaded ${allSessions.length} sessions and ${Object.keys(allProblems).length} problem sets`);
       syncText.textContent = `✅ Synced (${allSessions.length} sessions)`;
@@ -122,7 +274,7 @@ function convertSheetSession(sheetData) {
 
 async function refreshData() {
   console.log('🔄 Refreshing data...');
-  await loadData();
+  await loadData(true);
   applyFilters();
 }
 
@@ -145,6 +297,7 @@ async function deleteSession(sessionId) {
       console.log('✅ Session deleted successfully');
       // Remove from cache
       delete allProblems[sessionId];
+      closeModal();
       await refreshData();
     } else {
       throw new Error(data.message || 'Failed to delete session');
@@ -244,7 +397,7 @@ function updateStats() {
   `;
 }
 
-// Calendar
+// Calendar Functions
 function updateCalendar() {
   const calendar = document.getElementById('calendar');
   const monthLabel = document.getElementById('current-month');
@@ -252,86 +405,88 @@ function updateCalendar() {
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
   
-  monthLabel.textContent = currentMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  monthLabel.textContent = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   
+  // Get sessions by date for this month
   const sessionsByDate = {};
   filteredSessions.forEach(session => {
-    const date = new Date(session.timestamp);
-    if (date.getMonth() === month && date.getFullYear() === year) {
-      const dateKey = date.getDate();
-      if (!sessionsByDate[dateKey]) {
-        sessionsByDate[dateKey] = [];
+    const sessionDate = new Date(session.timestamp);
+    if (sessionDate.getMonth() === month && sessionDate.getFullYear() === year) {
+      const day = sessionDate.getDate();
+      if (!sessionsByDate[day]) {
+        sessionsByDate[day] = [];
       }
-      sessionsByDate[dateKey].push(session);
+      sessionsByDate[day].push(session);
     }
   });
   
   calendar.innerHTML = '';
   
+  // Empty cells before first day
   for (let i = 0; i < firstDay; i++) {
-    calendar.innerHTML += '<div class="calendar-day empty"></div>';
+    const emptyDay = document.createElement('div');
+    emptyDay.className = 'calendar-day empty';
+    calendar.appendChild(emptyDay);
   }
   
+  // Days of month
   const today = new Date();
   for (let day = 1; day <= daysInMonth; day++) {
+    const dayDiv = document.createElement('div');
+    dayDiv.className = 'calendar-day';
+    
+    const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+    if (isToday) {
+      dayDiv.classList.add('today');
+    }
+    
     const sessions = sessionsByDate[day] || [];
-    const avgScore = sessions.length > 0
-      ? (sessions.reduce((sum, s) => sum + s.normalized120, 0) / sessions.length).toFixed(1)
-      : 0;
-    
-    const isToday = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
-    const hasData = sessions.length > 0;
-    
-    let scoreClass = '';
-    if (avgScore >= 100) scoreClass = 'excellent';
-    else if (avgScore >= 75) scoreClass = 'good';
-    else if (avgScore >= 50) scoreClass = 'average';
-    else if (avgScore > 0) scoreClass = 'poor';
-    
-    calendar.innerHTML += `
-      <div class="calendar-day ${isToday ? 'today' : ''} ${hasData ? 'has-data' : ''}" 
-           data-day="${day}" ${hasData ? 'data-has-sessions="true"' : ''}>
+    if (sessions.length > 0) {
+      dayDiv.classList.add('has-data');
+      
+      const avgScore = sessions.reduce((sum, s) => sum + s.normalized120, 0) / sessions.length;
+      let scoreClass = 'poor';
+      if (avgScore >= 100) scoreClass = 'excellent';
+      else if (avgScore >= 80) scoreClass = 'good';
+      else if (avgScore >= 60) scoreClass = 'average';
+      
+      dayDiv.innerHTML = `
         <div class="day-number">${day}</div>
-        ${hasData ? `
-          <div class="day-games">${sessions.length}</div>
-          <div class="day-score ${scoreClass}">${avgScore}</div>
-        ` : ''}
-      </div>
-    `;
-  }
-  
-  calendar.addEventListener('click', handleCalendarClick);
-}
-
-function handleCalendarClick(e) {
-  const dayElement = e.target.closest('.calendar-day');
-  if (dayElement && dayElement.dataset.hasSessions) {
-    const day = parseInt(dayElement.dataset.day);
-    showDayDetails(day);
+        <div class="day-games">${sessions.length} game${sessions.length > 1 ? 's' : ''}</div>
+        <div class="day-score ${scoreClass}">${avgScore.toFixed(0)}</div>
+      `;
+      
+      dayDiv.addEventListener('click', () => showDayDetails(year, month, day));
+    } else {
+      dayDiv.innerHTML = `<div class="day-number">${day}</div>`;
+    }
+    
+    calendar.appendChild(dayDiv);
   }
 }
 
 function previousMonth() {
-  currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1);
+  currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
   updateCalendar();
 }
 
 function nextMonth() {
-  currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1);
+  currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
   updateCalendar();
 }
 
-function showDayDetails(day) {
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
-  
-  const daySessions = filteredSessions.filter(session => {
-    const date = new Date(session.timestamp);
-    return date.getDate() === day && date.getMonth() === month && date.getFullYear() === year;
+function showDayDetails(year, month, day) {
+  const sessions = filteredSessions.filter(session => {
+    const sessionDate = new Date(session.timestamp);
+    return sessionDate.getDate() === day && 
+           sessionDate.getMonth() === month && 
+           sessionDate.getFullYear() === year;
   });
+  
+  if (sessions.length === 0) return;
   
   const modal = document.getElementById('day-modal');
   const title = document.getElementById('day-modal-title');
@@ -339,40 +494,24 @@ function showDayDetails(day) {
   
   const dateStr = new Date(year, month, day).toLocaleDateString('en-US', { 
     weekday: 'long', 
+    year: 'numeric', 
     month: 'long', 
-    day: 'numeric',
-    year: 'numeric'
+    day: 'numeric' 
   });
   
-  title.textContent = `Sessions on ${dateStr}`;
+  title.textContent = dateStr;
   
-  tbody.innerHTML = daySessions.map((session) => {
-    return `
-      <tr>
-        <td>${formatTimeOnly(session.timestamp)}</td>
-        <td><span class="badge badge-${session.mode.toLowerCase()}">${session.mode}</span></td>
-        <td><span class="badge badge-duration">${formatDuration(session.duration)}</span></td>
-        <td><span class="score-display">${session.score}</span></td>
-        <td><span class="normalized-display">${session.normalized120.toFixed(1)}</span></td>
-        <td>
-          <button class="btn-details" data-session-id="${session.id}">Details</button>
-          <button class="btn-delete" data-session-id="${session.id}">×</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
+  tbody.innerHTML = sessions.map(session => `
+    <tr style="cursor: pointer;" onclick="showSessionDetails('${session.id}'); closeDayModal();">
+      <td>${formatTimeOnly(session.timestamp)}</td>
+      <td><span class="badge badge-${session.mode.toLowerCase()}">${session.mode}</span></td>
+      <td><span class="badge badge-duration">${formatDuration(session.duration)}</span></td>
+      <td><span class="score-display">${session.score}</span></td>
+      <td><span class="normalized-display">${session.normalized120.toFixed(1)}</span></td>
+    </tr>
+  `).join('');
   
-  tbody.addEventListener('click', handleDayModalClick);
   modal.classList.add('show');
-}
-
-function handleDayModalClick(e) {
-  if (e.target.classList.contains('btn-details')) {
-    showSessionDetails(e.target.dataset.sessionId);
-  } else if (e.target.classList.contains('btn-delete')) {
-    deleteSession(e.target.dataset.sessionId);
-    closeDayModal();
-  }
 }
 
 function closeDayModal() {
@@ -384,15 +523,15 @@ function updateLeaderboard() {
   const container = document.getElementById('leaderboard');
   
   if (filteredSessions.length === 0) {
-    container.innerHTML = '<div class="loading">No data yet</div>';
+    container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">No sessions yet</div>';
     return;
   }
   
-  const topScores = [...filteredSessions]
+  const topSessions = [...filteredSessions]
     .sort((a, b) => b.normalized120 - a.normalized120)
     .slice(0, 10);
   
-  container.innerHTML = topScores.map((session, index) => {
+  container.innerHTML = topSessions.map((session, index) => {
     const rank = index + 1;
     let rankClass = '';
     if (rank === 1) rankClass = 'gold';
@@ -400,114 +539,108 @@ function updateLeaderboard() {
     else if (rank === 3) rankClass = 'bronze';
     
     return `
-      <div class="leaderboard-item" data-session-id="${session.id}">
+      <div class="leaderboard-item" onclick="showSessionDetails('${session.id}')">
         <div class="leaderboard-rank ${rankClass}">#${rank}</div>
-        <div class="leaderboard-info">
+        <div class="leaderboard-details">
           <div class="leaderboard-score">${session.normalized120.toFixed(1)}</div>
-          <div class="leaderboard-details">
-            ${session.mode} • ${formatDuration(session.duration)} • Raw: ${session.score}
-          </div>
+          <div class="leaderboard-meta">${session.mode} • ${formatDuration(session.duration)} • Raw: ${session.score}</div>
+          <div class="leaderboard-session-id">Sep ${index + 1}</div>
         </div>
-        <div class="leaderboard-date">${formatDate(session.timestamp).split(',')[0]}</div>
       </div>
     `;
   }).join('');
-  
-  container.addEventListener('click', handleLeaderboardClick);
 }
 
-function handleLeaderboardClick(e) {
-  const item = e.target.closest('.leaderboard-item');
-  if (item && item.dataset.sessionId) {
-    showSessionDetails(item.dataset.sessionId);
-  }
-}
-
-// Interactive Chart
+// Chart Functions
 function initializeChart() {
-  chartData.canvas = document.getElementById('chart');
+  const canvas = document.getElementById('chart');
+  chartData.canvas = canvas;
+  chartData.ctx = canvas.getContext('2d');
   
-  if (!chartData.canvas) {
-    console.error('Chart canvas not found');
-    return;
+  // Setup canvas size
+  function resizeCanvas() {
+    const container = canvas.parentElement;
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
+    updateChart();
   }
   
-  chartData.ctx = chartData.canvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
   
-  // Mouse events for interactivity
-  chartData.canvas.addEventListener('mousemove', handleChartHover);
-  chartData.canvas.addEventListener('mouseleave', handleChartLeave);
-  
-  window.addEventListener('resize', () => {
-    if (filteredSessions.length > 0) {
-      updateChart();
-    }
-  });
+  // Mouse events
+  canvas.addEventListener('mousemove', handleChartHover);
+  canvas.addEventListener('mouseleave', handleChartLeave);
 }
 
 function updateChart() {
+  if (!chartData.canvas || !chartData.ctx) return;
+  
   const canvas = chartData.canvas;
   const ctx = chartData.ctx;
+  const rangeSelect = document.getElementById('chart-range');
+  const range = rangeSelect.value;
   
-  if (!canvas || !ctx) {
-    console.error('Chart not initialized properly');
-    return;
+  let displaySessions = [...filteredSessions];
+  if (range !== 'all') {
+    const numGames = parseInt(range);
+    displaySessions = displaySessions.slice(-numGames);
   }
   
-  canvas.width = canvas.offsetWidth;
-  canvas.height = 280;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  if (filteredSessions.length === 0) {
-    ctx.fillStyle = '#5f6368';
-    ctx.font = '16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
-    chartData.dataPoints = [];
-    return;
-  }
-
-  const data = filteredSessions.map(s => s.normalized120);
-  const maxValue = Math.max(...data, 100);
-  const padding = 50;
-  
-  const chartWidth = canvas.width - padding * 2;
-  const chartHeight = canvas.height - padding * 2;
-  
-  // Store data points for hover detection
   chartData.dataPoints = [];
   
-  // Draw axes
-  ctx.strokeStyle = '#2a3544';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(padding, padding);
-  ctx.lineTo(padding, canvas.height - padding);
-  ctx.lineTo(canvas.width - padding, canvas.height - padding);
-  ctx.stroke();
-
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (displaySessions.length === 0) {
+    ctx.fillStyle = '#9aa0a6';
+    ctx.font = '16px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data to display', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+  
+  const data = displaySessions.map(s => s.normalized120);
+  const padding = 60;
+  const chartWidth = canvas.width - (padding * 2);
+  const chartHeight = canvas.height - (padding * 2);
+  
+  const maxValue = Math.max(...data, 100);
+  const minValue = Math.max(0, Math.min(...data) - 10);
+  const valueRange = maxValue - minValue;
+  
   // Grid lines
   ctx.strokeStyle = '#1e2530';
   ctx.lineWidth = 1;
+  ctx.font = '11px Inter';
+  ctx.fillStyle = '#5f6368';
+  ctx.textAlign = 'right';
+  
   for (let i = 0; i <= 5; i++) {
-    const y = padding + (chartHeight / 5) * i;
+    const value = minValue + (valueRange / 5) * i;
+    const y = canvas.height - padding - (chartHeight / 5) * i;
+    
     ctx.beginPath();
     ctx.moveTo(padding, y);
     ctx.lineTo(canvas.width - padding, y);
     ctx.stroke();
-  }
-
-  // Y-axis labels
-  ctx.fillStyle = '#9aa0a6';
-  ctx.font = 'bold 12px sans-serif';
-  ctx.textAlign = 'right';
-  
-  for (let i = 0; i <= 5; i++) {
-    const value = maxValue - (maxValue / 5) * i;
-    const y = padding + (chartHeight / 5) * i;
+    
     ctx.fillText(value.toFixed(0), padding - 10, y + 5);
   }
-
+  
+  // X-axis labels (dates)
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#5f6368';
+  ctx.font = '10px Inter';
+  
+  const labelStep = Math.max(1, Math.floor(displaySessions.length / 8));
+  displaySessions.forEach((session, index) => {
+    if (index % labelStep === 0 || index === displaySessions.length - 1) {
+      const x = padding + (data.length > 1 ? (chartWidth / (data.length - 1)) * index : chartWidth / 2);
+      const dateLabel = formatDate(session.timestamp);
+      ctx.fillText(dateLabel, x, canvas.height - padding + 20);
+    }
+  });
+  
   if (data.length > 0) {
     const stepX = data.length > 1 ? chartWidth / (data.length - 1) : chartWidth / 2;
     
@@ -522,16 +655,15 @@ function updateChart() {
     
     data.forEach((value, index) => {
       const x = padding + (data.length > 1 ? stepX * index : chartWidth / 2);
-      const y = canvas.height - padding - (value / maxValue) * chartHeight;
-      if (index === 0) ctx.lineTo(x, y);
-      else ctx.lineTo(x, y);
+      const y = canvas.height - padding - ((value - minValue) / valueRange) * chartHeight;
+      ctx.lineTo(x, y);
       
       // Store point data for hover
       chartData.dataPoints.push({
         x: x,
         y: y,
         value: value,
-        session: filteredSessions[index]
+        session: displaySessions[index]
       });
     });
     
@@ -547,7 +679,7 @@ function updateChart() {
     
     data.forEach((value, index) => {
       const x = padding + (data.length > 1 ? stepX * index : chartWidth / 2);
-      const y = canvas.height - padding - (value / maxValue) * chartHeight;
+      const y = canvas.height - padding - ((value - minValue) / valueRange) * chartHeight;
       if (index === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
@@ -557,7 +689,7 @@ function updateChart() {
     // Points
     data.forEach((value, index) => {
       const x = padding + (data.length > 1 ? stepX * index : chartWidth / 2);
-      const y = canvas.height - padding - (value / maxValue) * chartHeight;
+      const y = canvas.height - padding - ((value - minValue) / valueRange) * chartHeight;
       
       const isHovered = chartData.hoveredIndex === index;
       
@@ -572,6 +704,25 @@ function updateChart() {
       ctx.arc(x, y, isHovered ? 7 : 5, 0, Math.PI * 2);
       ctx.stroke();
     });
+    
+    // Average line
+    const avg = data.reduce((a, b) => a + b, 0) / data.length;
+    const avgY = canvas.height - padding - ((avg - minValue) / valueRange) * chartHeight;
+    
+    ctx.strokeStyle = '#b388ff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(padding, avgY);
+    ctx.lineTo(canvas.width - padding, avgY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Average label
+    ctx.fillStyle = '#b388ff';
+    ctx.font = 'bold 11px Inter';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Avg: ${avg.toFixed(1)}`, padding + 5, avgY - 5);
   }
 }
 
@@ -603,7 +754,7 @@ function handleChartHover(e) {
       const tooltipDate = document.getElementById('tooltip-date');
       const tooltipScore = document.getElementById('tooltip-score');
       
-      tooltipDate.textContent = formatDate(point.session.timestamp);
+      tooltipDate.textContent = formatDate(point.session.timestamp) + ' ' + formatTimeOnly(point.session.timestamp);
       tooltipScore.textContent = `Score: ${point.value.toFixed(1)} (${point.session.score} raw)`;
       
       tooltip.style.left = (point.x + rect.left) + 'px';
@@ -634,33 +785,21 @@ function updateSessionsTable() {
   
   tbody.innerHTML = recentSessions.map((session) => {
     return `
-      <tr>
+      <tr onclick="showSessionDetails('${session.id}')" style="cursor: pointer;">
         <td>${formatDate(session.timestamp)}</td>
+        <td>${formatTimeOnly(session.timestamp)}</td>
         <td><span class="badge badge-${session.mode.toLowerCase()}">${session.mode}</span></td>
         <td><span class="badge badge-duration">${formatDuration(session.duration)}</span></td>
         <td><span class="score-display">${session.score}</span></td>
         <td><span class="normalized-display">${session.normalized120.toFixed(1)}</span></td>
-        <td>
-          <button class="btn-details" data-session-id="${session.id}">Details</button>
-          <button class="btn-delete" data-session-id="${session.id}">×</button>
-        </td>
       </tr>
     `;
   }).join('');
-  
-  tbody.addEventListener('click', handleTableClick);
-}
-
-function handleTableClick(e) {
-  if (e.target.classList.contains('btn-details')) {
-    showSessionDetails(e.target.dataset.sessionId);
-  } else if (e.target.classList.contains('btn-delete')) {
-    deleteSession(e.target.dataset.sessionId);
-  }
 }
 
 // Session Details Modal - now instant with cached data
 function showSessionDetails(sessionId) {
+  currentSessionId = sessionId;
   const session = allSessions.find(s => s.id === sessionId);
   if (!session) return;
   
@@ -669,7 +808,7 @@ function showSessionDetails(sessionId) {
   const stats = document.getElementById('modal-stats');
   const problemsBody = document.getElementById('modal-problems');
   
-  title.textContent = `Session Details - ${formatDate(session.timestamp)}`;
+  title.textContent = `Session Details - ${formatDate(session.timestamp)} ${formatTimeOnly(session.timestamp)}`;
   
   stats.innerHTML = `
     <div class="stat-card">
@@ -724,6 +863,7 @@ function showSessionDetails(sessionId) {
 
 function closeModal() {
   document.getElementById('details-modal').classList.remove('show');
+  currentSessionId = null;
 }
 
 // Utility Functions
@@ -736,6 +876,7 @@ function formatDuration(seconds) {
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('modal')) {
     e.target.classList.remove('show');
+    currentSessionId = null;
   }
 });
 
