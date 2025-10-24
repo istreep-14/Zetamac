@@ -34,6 +34,39 @@ let chartData = {
   hoveredIndex: null
 };
 
+// Chart settings - configurable
+let chartSettings = {
+  sma: {
+    window: 50,
+    plotInterval: 'game-1' // 'game-N', 'day-N'
+  },
+  handicap: {
+    bestOf: 20,
+    totalGames: 50
+  },
+  raw: {
+    plotInterval: 'game-1'
+  },
+  dataRange: 100 // number of games to show, or 'all'
+};
+
+// Load chart settings from localStorage
+function loadChartSettings() {
+  const saved = localStorage.getItem('zetamac-chart-settings');
+  if (saved) {
+    try {
+      chartSettings = JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load chart settings:', e);
+    }
+  }
+}
+
+// Save chart settings to localStorage
+function saveChartSettings() {
+  localStorage.setItem('zetamac-chart-settings', JSON.stringify(chartSettings));
+}
+
 // IndexedDB Setup
 async function initDB() {
   return new Promise((resolve, reject) => {
@@ -136,6 +169,9 @@ async function saveCachedData(sessions, problems) {
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('Dashboard loading...');
   
+  // Load chart settings
+  loadChartSettings();
+  
   // Initialize IndexedDB
   try {
     await initDB();
@@ -149,7 +185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Filter listeners
   document.getElementById('mode-filter').addEventListener('change', applyFilters);
   document.getElementById('duration-filter').addEventListener('change', applyFilters);
-  document.getElementById('chart-range').addEventListener('change', updateChart);
+  document.getElementById('chart-type').addEventListener('change', updateChart);
   
   // Button listeners
   document.getElementById('refresh-btn').addEventListener('click', refreshData);
@@ -162,6 +198,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       deleteSession(currentSessionId);
     }
   });
+  
+  // Chart settings modal
+  document.getElementById('chart-settings-btn').addEventListener('click', openChartSettings);
+  document.getElementById('close-chart-settings-btn').addEventListener('click', closeChartSettings);
+  document.getElementById('save-chart-settings').addEventListener('click', saveChartSettingsModal);
   
   // Initialize chart
   initializeChart();
@@ -576,22 +617,30 @@ function initializeChart() {
 function updateChart() {
   if (!chartData.canvas || !chartData.ctx) return;
   
+  const chartType = document.getElementById('chart-type').value;
+  
+  switch(chartType) {
+    case 'sma':
+      drawSMAHandicapChart();
+      break;
+    case 'raw':
+      drawRawScoresChart();
+      break;
+    case 'distribution':
+      drawDistributionChart();
+      break;
+  }
+}
+
+// Chart: SMA & Handicap
+function drawSMAHandicapChart() {
   const canvas = chartData.canvas;
   const ctx = chartData.ctx;
-  const rangeSelect = document.getElementById('chart-range');
-  const range = rangeSelect.value;
-  
-  let displaySessions = [...filteredSessions];
-  if (range !== 'all') {
-    const numGames = parseInt(range);
-    displaySessions = displaySessions.slice(-numGames);
-  }
   
   chartData.dataPoints = [];
-  
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  if (displaySessions.length === 0) {
+  if (filteredSessions.length === 0) {
     ctx.fillStyle = '#9aa0a6';
     ctx.font = '16px Inter';
     ctx.textAlign = 'center';
@@ -599,16 +648,315 @@ function updateChart() {
     return;
   }
   
-  const data = displaySessions.map(s => s.normalized120);
-  const padding = 60;
+  // Get data range
+  let sessions = [...filteredSessions];
+  if (chartSettings.dataRange !== 'all') {
+    sessions = sessions.slice(-chartSettings.dataRange);
+  }
+  
+  if (sessions.length === 0) return;
+  
+  const padding = 70;
   const chartWidth = canvas.width - (padding * 2);
   const chartHeight = canvas.height - (padding * 2);
   
-  const maxValue = Math.max(...data, 100);
-  const minValue = Math.max(0, Math.min(...data) - 10);
+  // Calculate SMA points
+  const smaPoints = calculateSMAPoints(sessions);
+  
+  // Calculate Handicap points (use same indices as SMA for consistency)
+  const handicapPoints = calculateHandicapPoints(sessions, smaPoints.map(p => p.index));
+  
+  // Find min/max for scaling
+  const allValues = [...smaPoints.map(p => p.value), ...handicapPoints.map(p => p.value)];
+  const maxValue = Math.max(...allValues, 100);
+  const minValue = Math.max(0, Math.min(...allValues) - 10);
   const valueRange = maxValue - minValue;
   
-  // Grid lines
+  // Draw grid
+  drawGrid(ctx, canvas, padding, chartWidth, chartHeight, minValue, maxValue, 5);
+  
+  // Draw X-axis labels (dates)
+  drawXAxisLabels(ctx, canvas, padding, chartWidth, chartHeight, smaPoints);
+  
+  // Draw Handicap line first (so it's behind SMA)
+  if (handicapPoints.length > 0) {
+    drawLine(ctx, canvas, padding, chartWidth, chartHeight, handicapPoints, minValue, valueRange, '#00ff88', 3, false);
+  }
+  
+  // Draw SMA line
+  if (smaPoints.length > 0) {
+    drawLine(ctx, canvas, padding, chartWidth, chartHeight, smaPoints, minValue, valueRange, '#00d9ff', 3, true);
+  }
+  
+  // Draw points for SMA
+  smaPoints.forEach((point, idx) => {
+    const x = padding + (chartWidth * point.x);
+    const y = canvas.height - padding - ((point.value - minValue) / valueRange) * chartHeight;
+    
+    const isHovered = chartData.hoveredIndex === idx;
+    
+    ctx.fillStyle = isHovered ? '#b388ff' : '#00d9ff';
+    ctx.beginPath();
+    ctx.arc(x, y, isHovered ? 7 : 5, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = '#0a0e17';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, isHovered ? 7 : 5, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    chartData.dataPoints.push({
+      x: x,
+      y: y,
+      value: point.value,
+      session: point.session,
+      type: 'sma',
+      handicap: handicapPoints[idx]?.value
+    });
+  });
+  
+  // Legend
+  drawLegend(ctx, canvas, padding, ['SMA', 'Handicap']);
+}
+
+// Calculate SMA points based on plot interval
+function calculateSMAPoints(sessions) {
+  const points = [];
+  const interval = chartSettings.sma.plotInterval;
+  const window = chartSettings.sma.window;
+  
+  // Group sessions based on interval
+  const indices = getPlotIndices(sessions, interval);
+  
+  indices.forEach(i => {
+    if (i >= window - 1) {
+      // Calculate SMA for this point
+      const windowSessions = sessions.slice(i - window + 1, i + 1);
+      const sma = windowSessions.reduce((sum, s) => sum + s.normalized120, 0) / window;
+      
+      points.push({
+        index: i,
+        x: i / (sessions.length - 1),
+        value: sma,
+        session: sessions[i]
+      });
+    }
+  });
+  
+  return points;
+}
+
+// Calculate Handicap points (best X of last Y games)
+function calculateHandicapPoints(sessions, indices) {
+  const points = [];
+  const bestOf = chartSettings.handicap.bestOf;
+  const totalGames = chartSettings.handicap.totalGames;
+  
+  indices.forEach(i => {
+    if (i >= totalGames - 1) {
+      // Get last totalGames sessions
+      const windowSessions = sessions.slice(i - totalGames + 1, i + 1);
+      
+      // Sort and get best scores
+      const sorted = [...windowSessions].sort((a, b) => b.normalized120 - a.normalized120);
+      const best = sorted.slice(0, bestOf);
+      const handicap = best.reduce((sum, s) => sum + s.normalized120, 0) / bestOf;
+      
+      points.push({
+        index: i,
+        x: i / (sessions.length - 1),
+        value: handicap,
+        session: sessions[i]
+      });
+    }
+  });
+  
+  return points;
+}
+
+// Get indices for plotting based on interval
+function getPlotIndices(sessions, interval) {
+  const indices = [];
+  const [type, value] = interval.split('-');
+  const n = parseInt(value);
+  
+  if (type === 'game') {
+    // Plot every N games
+    for (let i = 0; i < sessions.length; i += n) {
+      indices.push(i);
+    }
+    // Always include last game
+    if (indices[indices.length - 1] !== sessions.length - 1) {
+      indices.push(sessions.length - 1);
+    }
+  } else if (type === 'day') {
+    // Plot every N days
+    const daysSeen = new Set();
+    sessions.forEach((session, i) => {
+      const date = new Date(session.timestamp);
+      const dayKey = `${date.getFullYear()}-${date.getMonth()}-${Math.floor(date.getDate() / n) * n}`;
+      
+      if (!daysSeen.has(dayKey)) {
+        daysSeen.add(dayKey);
+        indices.push(i);
+      }
+    });
+  }
+  
+  return indices;
+}
+
+// Chart: Raw Scores
+function drawRawScoresChart() {
+  const canvas = chartData.canvas;
+  const ctx = chartData.ctx;
+  
+  chartData.dataPoints = [];
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (filteredSessions.length === 0) {
+    ctx.fillStyle = '#9aa0a6';
+    ctx.font = '16px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data to display', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+  
+  let sessions = [...filteredSessions];
+  if (chartSettings.dataRange !== 'all') {
+    sessions = sessions.slice(-chartSettings.dataRange);
+  }
+  
+  const padding = 70;
+  const chartWidth = canvas.width - (padding * 2);
+  const chartHeight = canvas.height - (padding * 2);
+  
+  // Get plot indices
+  const interval = chartSettings.raw.plotInterval;
+  const indices = getPlotIndices(sessions, interval);
+  
+  // Get data points
+  const dataPoints = indices.map(i => ({
+    index: i,
+    x: i / (sessions.length - 1),
+    value: sessions[i].normalized120,
+    session: sessions[i]
+  }));
+  
+  if (dataPoints.length === 0) return;
+  
+  const values = dataPoints.map(p => p.value);
+  const maxValue = Math.max(...values, 100);
+  const minValue = Math.max(0, Math.min(...values) - 10);
+  const valueRange = maxValue - minValue;
+  
+  // Draw grid
+  drawGrid(ctx, canvas, padding, chartWidth, chartHeight, minValue, maxValue, 5);
+  
+  // Draw X-axis labels
+  drawXAxisLabels(ctx, canvas, padding, chartWidth, chartHeight, dataPoints);
+  
+  // Draw scatter points
+  dataPoints.forEach((point, idx) => {
+    const x = padding + (chartWidth * point.x);
+    const y = canvas.height - padding - ((point.value - minValue) / valueRange) * chartHeight;
+    
+    const isHovered = chartData.hoveredIndex === idx;
+    
+    // Color based on score
+    let color = '#b388ff';
+    if (point.value >= 100) color = '#00ff88';
+    else if (point.value >= 80) color = '#00d9ff';
+    else if (point.value >= 60) color = '#ffaa00';
+    else color = '#ff4444';
+    
+    ctx.fillStyle = isHovered ? '#ffffff' : color;
+    ctx.beginPath();
+    ctx.arc(x, y, isHovered ? 7 : 4, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = '#0a0e17';
+    ctx.lineWidth = isHovered ? 2 : 1;
+    ctx.beginPath();
+    ctx.arc(x, y, isHovered ? 7 : 4, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    chartData.dataPoints.push({
+      x: x,
+      y: y,
+      value: point.value,
+      session: point.session,
+      type: 'raw'
+    });
+  });
+  
+  // Calculate and draw average line
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const avgY = canvas.height - padding - ((avg - minValue) / valueRange) * chartHeight;
+  
+  ctx.strokeStyle = '#b388ff';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(padding, avgY);
+  ctx.lineTo(canvas.width - padding, avgY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  
+  ctx.fillStyle = '#b388ff';
+  ctx.font = 'bold 11px Inter';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Avg: ${avg.toFixed(1)}`, padding + 5, avgY - 5);
+}
+
+// Chart: Distribution
+function drawDistributionChart() {
+  const canvas = chartData.canvas;
+  const ctx = chartData.ctx;
+  
+  chartData.dataPoints = [];
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (filteredSessions.length === 0) {
+    ctx.fillStyle = '#9aa0a6';
+    ctx.font = '16px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data to display', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+  
+  const padding = 70;
+  const chartWidth = canvas.width - (padding * 2);
+  const chartHeight = canvas.height - (padding * 2);
+  
+  // Get normalized scores
+  const scores = filteredSessions.map(s => s.normalized120);
+  
+  // Create histogram bins
+  const binSize = 5;
+  const minScore = Math.floor(Math.min(...scores) / binSize) * binSize;
+  const maxScore = Math.ceil(Math.max(...scores) / binSize) * binSize;
+  const numBins = Math.ceil((maxScore - minScore) / binSize);
+  
+  const bins = new Array(numBins).fill(0);
+  const binLabels = [];
+  
+  for (let i = 0; i < numBins; i++) {
+    binLabels.push(minScore + i * binSize);
+  }
+  
+  // Fill bins
+  scores.forEach(score => {
+    const binIndex = Math.floor((score - minScore) / binSize);
+    if (binIndex >= 0 && binIndex < numBins) {
+      bins[binIndex]++;
+    }
+  });
+  
+  const maxBinCount = Math.max(...bins);
+  
+  // Draw grid (horizontal only for histogram)
   ctx.strokeStyle = '#1e2530';
   ctx.lineWidth = 1;
   ctx.font = '11px Inter';
@@ -616,8 +964,100 @@ function updateChart() {
   ctx.textAlign = 'right';
   
   for (let i = 0; i <= 5; i++) {
-    const value = minValue + (valueRange / 5) * i;
+    const count = Math.floor((maxBinCount / 5) * i);
     const y = canvas.height - padding - (chartHeight / 5) * i;
+    
+    ctx.beginPath();
+    ctx.moveTo(padding, y);
+    ctx.lineTo(canvas.width - padding, y);
+    ctx.stroke();
+    
+    ctx.fillText(count.toString(), padding - 10, y + 5);
+  }
+  
+  // Draw bars
+  const barWidth = chartWidth / numBins;
+  
+  bins.forEach((count, i) => {
+    const x = padding + (barWidth * i);
+    const barHeight = (count / maxBinCount) * chartHeight;
+    const y = canvas.height - padding - barHeight;
+    
+    // Color gradient based on score range
+    const scoreRange = binLabels[i];
+    let color = '#b388ff';
+    if (scoreRange >= 100) color = '#00ff88';
+    else if (scoreRange >= 80) color = '#00d9ff';
+    else if (scoreRange >= 60) color = '#ffaa00';
+    else color = '#ff4444';
+    
+    ctx.fillStyle = color + '80'; // Add transparency
+    ctx.fillRect(x + 1, y, barWidth - 2, barHeight);
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y, barWidth - 2, barHeight);
+  });
+  
+  // Draw X-axis labels (score ranges)
+  ctx.fillStyle = '#5f6368';
+  ctx.font = '10px Inter';
+  ctx.textAlign = 'center';
+  
+  binLabels.forEach((label, i) => {
+    if (i % Math.ceil(numBins / 10) === 0) {
+      const x = padding + (barWidth * i) + (barWidth / 2);
+      ctx.fillText(label.toString(), x, canvas.height - padding + 20);
+    }
+  });
+  
+  // Draw statistics
+  const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const sorted = [...scores].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / scores.length;
+  const stdDev = Math.sqrt(variance);
+  const skewness = calculateSkewness(scores, mean, stdDev);
+  
+  ctx.fillStyle = '#e8eaed';
+  ctx.font = 'bold 12px Inter';
+  ctx.textAlign = 'left';
+  
+  const statsX = padding + 10;
+  let statsY = padding + 20;
+  
+  ctx.fillText(`Mean: ${mean.toFixed(1)}`, statsX, statsY);
+  statsY += 20;
+  ctx.fillText(`Median: ${median.toFixed(1)}`, statsX, statsY);
+  statsY += 20;
+  ctx.fillText(`Std Dev: ${stdDev.toFixed(1)}`, statsX, statsY);
+  statsY += 20;
+  
+  const skewText = skewness > 0 ? 'Right' : skewness < 0 ? 'Left' : 'None';
+  ctx.fillText(`Skew: ${skewText} (${skewness.toFixed(2)})`, statsX, statsY);
+}
+
+// Helper: Calculate skewness
+function calculateSkewness(data, mean, stdDev) {
+  if (stdDev === 0) return 0;
+  const n = data.length;
+  const sum = data.reduce((acc, val) => acc + Math.pow((val - mean) / stdDev, 3), 0);
+  return (n / ((n - 1) * (n - 2))) * sum;
+}
+
+// Helper: Draw grid
+function drawGrid(ctx, canvas, padding, chartWidth, chartHeight, minValue, maxValue, divisions) {
+  ctx.strokeStyle = '#1e2530';
+  ctx.lineWidth = 1;
+  ctx.font = '11px Inter';
+  ctx.fillStyle = '#5f6368';
+  ctx.textAlign = 'right';
+  
+  const valueRange = maxValue - minValue;
+  
+  for (let i = 0; i <= divisions; i++) {
+    const value = minValue + (valueRange / divisions) * i;
+    const y = canvas.height - padding - (chartHeight / divisions) * i;
     
     ctx.beginPath();
     ctx.moveTo(padding, y);
@@ -626,104 +1066,95 @@ function updateChart() {
     
     ctx.fillText(value.toFixed(0), padding - 10, y + 5);
   }
-  
-  // X-axis labels (dates)
+}
+
+// Helper: Draw X-axis labels
+function drawXAxisLabels(ctx, canvas, padding, chartWidth, chartHeight, dataPoints) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#5f6368';
   ctx.font = '10px Inter';
   
-  const labelStep = Math.max(1, Math.floor(displaySessions.length / 8));
-  displaySessions.forEach((session, index) => {
-    if (index % labelStep === 0 || index === displaySessions.length - 1) {
-      const x = padding + (data.length > 1 ? (chartWidth / (data.length - 1)) * index : chartWidth / 2);
-      const dateLabel = formatDate(session.timestamp);
+  const labelStep = Math.max(1, Math.floor(dataPoints.length / 8));
+  dataPoints.forEach((point, index) => {
+    if (index % labelStep === 0 || index === dataPoints.length - 1) {
+      const x = padding + (chartWidth * point.x);
+      const dateLabel = formatDate(point.session.timestamp);
       ctx.fillText(dateLabel, x, canvas.height - padding + 20);
     }
   });
+}
+
+// Helper: Draw line
+function drawLine(ctx, canvas, padding, chartWidth, chartHeight, points, minValue, valueRange, color, lineWidth, withGradient) {
+  if (points.length === 0) return;
   
-  if (data.length > 0) {
-    const stepX = data.length > 1 ? chartWidth / (data.length - 1) : chartWidth / 2;
-    
-    // Gradient fill
+  // Gradient fill (optional)
+  if (withGradient) {
     const gradient = ctx.createLinearGradient(0, padding, 0, canvas.height - padding);
-    gradient.addColorStop(0, 'rgba(0, 217, 255, 0.3)');
-    gradient.addColorStop(1, 'rgba(0, 217, 255, 0.05)');
+    gradient.addColorStop(0, color + '40');
+    gradient.addColorStop(1, color + '08');
     
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.moveTo(padding, canvas.height - padding);
     
-    data.forEach((value, index) => {
-      const x = padding + (data.length > 1 ? stepX * index : chartWidth / 2);
-      const y = canvas.height - padding - ((value - minValue) / valueRange) * chartHeight;
+    points.forEach(point => {
+      const x = padding + (chartWidth * point.x);
+      const y = canvas.height - padding - ((point.value - minValue) / valueRange) * chartHeight;
       ctx.lineTo(x, y);
-      
-      // Store point data for hover
-      chartData.dataPoints.push({
-        x: x,
-        y: y,
-        value: value,
-        session: displaySessions[index]
-      });
     });
     
-    ctx.lineTo(padding + (data.length > 1 ? stepX * (data.length - 1) : chartWidth / 2), canvas.height - padding);
+    ctx.lineTo(padding + (chartWidth * points[points.length - 1].x), canvas.height - padding);
     ctx.closePath();
     ctx.fill();
-
-    // Line
-    ctx.strokeStyle = '#00d9ff';
-    ctx.lineWidth = 3;
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    
-    data.forEach((value, index) => {
-      const x = padding + (data.length > 1 ? stepX * index : chartWidth / 2);
-      const y = canvas.height - padding - ((value - minValue) / valueRange) * chartHeight;
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    
-    ctx.stroke();
-
-    // Points
-    data.forEach((value, index) => {
-      const x = padding + (data.length > 1 ? stepX * index : chartWidth / 2);
-      const y = canvas.height - padding - ((value - minValue) / valueRange) * chartHeight;
-      
-      const isHovered = chartData.hoveredIndex === index;
-      
-      ctx.fillStyle = isHovered ? '#b388ff' : '#00d9ff';
-      ctx.beginPath();
-      ctx.arc(x, y, isHovered ? 7 : 5, 0, Math.PI * 2);
-      ctx.fill();
-      
-      ctx.strokeStyle = '#0a0e17';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(x, y, isHovered ? 7 : 5, 0, Math.PI * 2);
-      ctx.stroke();
-    });
-    
-    // Average line
-    const avg = data.reduce((a, b) => a + b, 0) / data.length;
-    const avgY = canvas.height - padding - ((avg - minValue) / valueRange) * chartHeight;
-    
-    ctx.strokeStyle = '#b388ff';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    ctx.moveTo(padding, avgY);
-    ctx.lineTo(canvas.width - padding, avgY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    
-    // Average label
-    ctx.fillStyle = '#b388ff';
-    ctx.font = 'bold 11px Inter';
-    ctx.textAlign = 'left';
-    ctx.fillText(`Avg: ${avg.toFixed(1)}`, padding + 5, avgY - 5);
   }
+  
+  // Line
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  
+  points.forEach((point, i) => {
+    const x = padding + (chartWidth * point.x);
+    const y = canvas.height - padding - ((point.value - minValue) / valueRange) * chartHeight;
+    
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  
+  ctx.stroke();
+}
+
+// Helper: Draw legend
+function drawLegend(ctx, canvas, padding, items) {
+  const colors = {
+    'SMA': '#00d9ff',
+    'Handicap': '#00ff88',
+    'Raw': '#b388ff'
+  };
+  
+  ctx.font = '11px Inter';
+  ctx.textAlign = 'left';
+  
+  let x = padding + 10;
+  const y = padding - 20;
+  
+  items.forEach((item, i) => {
+    // Draw line sample
+    ctx.strokeStyle = colors[item];
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 25, y);
+    ctx.stroke();
+    
+    // Draw text
+    ctx.fillStyle = '#e8eaed';
+    ctx.fillText(item, x + 30, y + 4);
+    
+    x += 100;
+  });
 }
 
 function handleChartHover(e) {
@@ -755,10 +1186,19 @@ function handleChartHover(e) {
       const tooltipScore = document.getElementById('tooltip-score');
       
       tooltipDate.textContent = formatDate(point.session.timestamp) + ' ' + formatTimeOnly(point.session.timestamp);
-      tooltipScore.textContent = `Score: ${point.value.toFixed(1)} (${point.session.score} raw)`;
+      
+      if (point.type === 'sma') {
+        tooltipScore.innerHTML = `
+          SMA: ${point.value.toFixed(1)}<br>
+          ${point.handicap ? `Handicap: ${point.handicap.toFixed(1)}<br>` : ''}
+          Raw: ${point.session.score}
+        `;
+      } else {
+        tooltipScore.textContent = `Score: ${point.value.toFixed(1)} (${point.session.score} raw)`;
+      }
       
       tooltip.style.left = (point.x + rect.left) + 'px';
-      tooltip.style.top = (point.y + rect.top - 60) + 'px';
+      tooltip.style.top = (point.y + rect.top - 70) + 'px';
       tooltip.classList.add('show');
     }
   }
@@ -879,5 +1319,51 @@ document.addEventListener('click', (e) => {
     currentSessionId = null;
   }
 });
+
+// Chart Settings Modal Functions
+function openChartSettings() {
+  const modal = document.getElementById('chart-settings-modal');
+  
+  // Load current settings into form
+  document.getElementById('sma-window').value = chartSettings.sma.window;
+  document.getElementById('sma-plot-interval').value = chartSettings.sma.plotInterval;
+  document.getElementById('handicap-best').value = chartSettings.handicap.bestOf;
+  document.getElementById('handicap-total').value = chartSettings.handicap.totalGames;
+  document.getElementById('data-range').value = chartSettings.dataRange;
+  document.getElementById('raw-plot-interval').value = chartSettings.raw.plotInterval;
+  
+  modal.classList.add('show');
+}
+
+function closeChartSettings() {
+  document.getElementById('chart-settings-modal').classList.remove('show');
+}
+
+function saveChartSettingsModal() {
+  // Get values from form
+  chartSettings.sma.window = parseInt(document.getElementById('sma-window').value);
+  chartSettings.sma.plotInterval = document.getElementById('sma-plot-interval').value;
+  chartSettings.handicap.bestOf = parseInt(document.getElementById('handicap-best').value);
+  chartSettings.handicap.totalGames = parseInt(document.getElementById('handicap-total').value);
+  chartSettings.dataRange = document.getElementById('data-range').value === 'all' ? 'all' : parseInt(document.getElementById('data-range').value);
+  chartSettings.raw.plotInterval = document.getElementById('raw-plot-interval').value;
+  
+  // Validate
+  if (chartSettings.handicap.bestOf > chartSettings.handicap.totalGames) {
+    alert('Handicap "best of" cannot be greater than "total games"');
+    return;
+  }
+  
+  // Save to localStorage
+  saveChartSettings();
+  
+  // Update chart
+  updateChart();
+  
+  // Close modal
+  closeChartSettings();
+  
+  console.log('✅ Chart settings saved:', chartSettings);
+}
 
 console.log('✅ Dashboard script loaded');
