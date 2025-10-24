@@ -773,6 +773,76 @@ canvas {
     grid-template-columns: 1fr;
   }
 }
+
+.settings-section {
+  background: var(--bg-darker);
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.setting-row label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 140px;
+}
+
+.setting-row input[type="number"] {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+.setting-help {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.legend-line {
+  width: 30px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.legend-line.sma {
+  background: #00d9ff;
+}
+
+.legend-line.handicap {
+  background: #00ff88;
+}
+
+.legend-line.raw {
+  background: #b388ff;
+}
   </style>
 </head>
 <body>
@@ -817,16 +887,15 @@ canvas {
       <div class="left-column">
         <div class="card">
           <div class="card-header">
-            <h2 class="card-title">📊 Performance Trend</h2>
+            <h2 class="card-title">📊 Performance Trends</h2>
             <div class="chart-controls">
-              <label for="chart-range">Show last:</label>
-              <select id="chart-range">
-                <option value="10">10 games</option>
-                <option value="20" selected>20 games</option>
-                <option value="30">30 games</option>
-                <option value="50">50 games</option>
-                <option value="all">All games</option>
+              <label for="chart-type">Chart:</label>
+              <select id="chart-type">
+                <option value="sma" selected>SMA & Handicap</option>
+                <option value="raw">Raw Scores</option>
+                <option value="distribution">Distribution</option>
               </select>
+              <button id="chart-settings-btn" style="margin-left: 1rem; padding: 0.4rem 0.8rem;">⚙️ Settings</button>
             </div>
           </div>
           <div class="chart-container">
@@ -939,6 +1008,75 @@ canvas {
           </thead>
           <tbody id="modal-problems"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="chart-settings-modal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+      <div class="modal-header">
+        <div class="modal-title">⚙️ Chart Settings</div>
+        <button class="modal-close" id="close-chart-settings-btn">Close</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        
+        <div class="settings-section">
+          <h3 style="color: var(--accent); margin-bottom: 1rem; font-size: 1.1rem;">📊 SMA & Handicap Chart</h3>
+          
+          <div class="setting-row">
+            <label for="sma-window">SMA Window (games):</label>
+            <input type="number" id="sma-window" value="50" min="5" max="200" style="width: 100px;">
+            <span class="setting-help">Rolling average of last N games</span>
+          </div>
+          
+          <div class="setting-row">
+            <label for="sma-plot-interval">Plot SMA Every:</label>
+            <select id="sma-plot-interval" style="width: 200px;">
+              <option value="game-1" selected>Every game</option>
+              <option value="game-2">Every 2 games</option>
+              <option value="game-5">Every 5 games</option>
+              <option value="game-10">Every 10 games</option>
+              <option value="day-1">Every day</option>
+              <option value="day-3">Every 3 days</option>
+              <option value="day-7">Every week</option>
+            </select>
+          </div>
+          
+          <div class="setting-row">
+            <label for="handicap-best">Handicap: Best</label>
+            <input type="number" id="handicap-best" value="20" min="1" max="100" style="width: 80px;">
+            <span>of last</span>
+            <input type="number" id="handicap-total" value="50" min="5" max="200" style="width: 80px;">
+            <span>games</span>
+          </div>
+          
+          <div class="setting-row">
+            <label for="data-range">Show Last:</label>
+            <select id="data-range" style="width: 150px;">
+              <option value="50">50 games</option>
+              <option value="100" selected>100 games</option>
+              <option value="200">200 games</option>
+              <option value="all">All games</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 style="color: var(--accent); margin-bottom: 1rem; font-size: 1.1rem;">📈 Raw Scores Chart</h3>
+          
+          <div class="setting-row">
+            <label for="raw-plot-interval">Plot Every:</label>
+            <select id="raw-plot-interval" style="width: 200px;">
+              <option value="game-1" selected>Every game</option>
+              <option value="game-2">Every 2 games</option>
+              <option value="game-5">Every 5 games</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="text-align: right; padding-top: 1rem; border-top: 1px solid var(--border);">
+          <button id="save-chart-settings" class="btn-primary">Save Settings</button>
+        </div>
       </div>
     </div>
   </div>
